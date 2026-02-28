@@ -119,6 +119,7 @@ type requestConfig struct {
 	IncludeRegional bool   `json:"include_regional"`
 	Location        string `json:"location"`
 	Nameservers     string `json:"nameservers"`
+	DataSource      string `json:"data_source"`
 }
 
 // RegisterHandler registers all known handlers.
@@ -221,7 +222,11 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 
 	hostnames := history.Random(queryCount, history.Uniq(history.ExternalHostnames(records)))
 	if len(hostnames) == 0 {
-		warnings = append(warnings, "No eligible hostnames found in browsing history.")
+		hostnames = fallbackHostnames(queryCount)
+		warnings = append(warnings, "No eligible hostnames found in Chrome history. Using fallback public domain set.")
+	}
+	if len(hostnames) == 0 {
+		warnings = append(warnings, "No eligible hostnames available for benchmark.")
 		writeJSON(w, http.StatusOK, benchmarkResponse{
 			RequestedQueries: queryCount,
 			ExecutedQueries:  0,
@@ -525,7 +530,60 @@ func parseRequestConfig(r *http.Request) (requestConfig, error) {
 	cfg.IncludeRegional = formEnabled(r, "include_regional")
 	cfg.Location = strings.ToLower(strings.TrimSpace(r.FormValue("location")))
 	cfg.Nameservers = strings.TrimSpace(r.FormValue("nameservers"))
+	cfg.DataSource = strings.ToLower(strings.TrimSpace(r.FormValue("data_source")))
 	return cfg, nil
+}
+
+func fallbackHostnames(count int) []string {
+	base := []string{
+		"google.com",
+		"youtube.com",
+		"facebook.com",
+		"instagram.com",
+		"wikipedia.org",
+		"x.com",
+		"reddit.com",
+		"amazon.com",
+		"netflix.com",
+		"microsoft.com",
+		"apple.com",
+		"cloudflare.com",
+		"openai.com",
+		"yahoo.com",
+		"bing.com",
+		"office.com",
+		"github.com",
+		"stackoverflow.com",
+		"whatsapp.com",
+		"tiktok.com",
+		"linkedin.com",
+		"imdb.com",
+		"cnn.com",
+		"bbc.com",
+		"nytimes.com",
+		"mozilla.org",
+		"adobe.com",
+		"spotify.com",
+		"wordpress.com",
+		"quora.com",
+	}
+
+	if count <= 0 {
+		return nil
+	}
+	result := make([]string, 0, count)
+	for len(result) < count {
+		for _, domain := range base {
+			if len(result) >= count {
+				break
+			}
+			result = append(result, domain)
+		}
+		if len(base) == 0 {
+			break
+		}
+	}
+	return result
 }
 
 func ensureFQDN(record string) string {

@@ -88,6 +88,7 @@ Disable both checkboxes to test only manually entered servers.
 ## Notes
 
 - History sampling currently uses Chrome history.
+- If Chrome history has no eligible external hostnames, benchmark falls back to a built-in public domain set.
 - UI includes some forward-looking fields (for future expansion).
 - If no valid history records are found, the API returns warnings and empty results.
 

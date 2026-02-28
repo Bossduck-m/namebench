@@ -38,7 +38,9 @@ func Chrome(days int) (urls []string, err error) {
 	paths := []string{
 		"${HOME}/Library/Application Support/Google/Chrome/Default/History",
 		"${HOME}/.config/google-chrome/Default/History",
+		"${LOCALAPPDATA}/Google/Chrome/User Data/Default/History",
 		"${APPDATA}/Google/Chrome/User Data/Default/History",
+		"${USERPROFILE}/AppData/Local/Google/Chrome/User Data/Default/History",
 		"${USERPROFILE}/Local Settings/Application Data/Google/Chrome/User Data/Default/History",
 	}
 

@@ -8,3 +8,4 @@ Date: 2026-03-01
 - Switched frontend POST payloads to `application/x-www-form-urlencoded` for stable field parsing.
 - Improved warning messages:
   - Distinguishes between "no nameserver entered" and "entered nameservers could not be parsed".
+- Added Windows Chrome history lookup paths using `LOCALAPPDATA` / `AppData\\Local`.

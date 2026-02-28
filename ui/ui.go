@@ -4,6 +4,7 @@ package ui
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -145,7 +146,7 @@ func Index(w http.ResponseWriter, r *http.Request) {
 func DnsSec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	if err := r.ParseForm(); err != nil {
+	if err := parseIncomingForm(r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -182,7 +183,7 @@ func DnsSec(w http.ResponseWriter, r *http.Request) {
 
 // Submit handles /submit
 func Submit(w http.ResponseWriter, r *http.Request) {
-	if err := r.ParseForm(); err != nil {
+	if err := parseIncomingForm(r); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -192,11 +193,14 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	includeRegional := formEnabled(r, "include_regional")
 	location := strings.ToLower(strings.TrimSpace(r.FormValue("location")))
 
-	nameServers := parseNameServers(r.FormValue("nameservers"))
+	rawNameservers := strings.TrimSpace(r.FormValue("nameservers"))
+	nameServers := parseNameServers(rawNameservers)
 	candidateServers := mergeNameServers(nameServers, includeGlobal, includeRegional, location)
 	warnings := make([]string, 0, 2)
-	if len(nameServers) == 0 {
+	if rawNameservers == "" {
 		warnings = append(warnings, "No manual nameserver provided, using default provider pools.")
+	} else if len(nameServers) == 0 {
+		warnings = append(warnings, "Manual nameservers could not be parsed. Use one IPv4/IPv6 per line.")
 	}
 
 	records, err := history.Chrome(HISTORY_DAYS)
@@ -478,6 +482,13 @@ func normalizeNameServer(raw string) (string, bool) {
 
 func formEnabled(r *http.Request, key string) bool {
 	return strings.TrimSpace(r.FormValue(key)) != ""
+}
+
+func parseIncomingForm(r *http.Request) error {
+	if err := r.ParseMultipartForm(4 << 20); err != nil && !errors.Is(err, http.ErrNotMultipart) {
+		return err
+	}
+	return r.ParseForm()
 }
 
 func ensureFQDN(record string) string {

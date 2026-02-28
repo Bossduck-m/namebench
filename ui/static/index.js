@@ -250,6 +250,15 @@
     return lines.join("\n");
   }
 
+  function buildUrlEncodedBody(form) {
+    var params = new URLSearchParams();
+    var data = new FormData(form);
+    data.forEach(function (value, key) {
+      params.append(key, String(value));
+    });
+    return params.toString();
+  }
+
   async function runBenchmark(event) {
     event.preventDefault();
     var form = byId("benchmark-form");
@@ -262,8 +271,11 @@
     try {
       var response = await fetch(form.action, {
         method: "POST",
-        headers: { "Accept": "application/json" },
-        body: new FormData(form)
+        headers: {
+          "Accept": "application/json",
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        },
+        body: buildUrlEncodedBody(form)
       });
 
       var raw = await response.text();
@@ -301,7 +313,10 @@
     try {
       var response = await fetch("/dnssec", {
         method: "POST",
-        body: new FormData(form)
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        },
+        body: buildUrlEncodedBody(form)
       });
       var raw = await response.text();
       if (!response.ok) {

@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/google/namebench/dnschecks"
@@ -79,6 +81,18 @@ func DnsSec(w http.ResponseWriter, r *http.Request) {
 
 // Submit handles /submit
 func Submit(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	queryCount := parsePositiveInt(r.FormValue("query_count"), COUNT)
+	nameServers := parseNameServers(r.FormValue("nameservers"))
+	targetServer := "8.8.8.8:53"
+	if len(nameServers) > 0 {
+		targetServer = nameServers[0]
+	}
+
 	records, err := history.Chrome(HISTORY_DAYS)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -86,7 +100,7 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	q := dnsqueue.StartQueue(QUEUE_LENGTH, WORKERS)
-	hostnames := history.Random(COUNT, history.Uniq(history.ExternalHostnames(records)))
+	hostnames := history.Random(queryCount, history.Uniq(history.ExternalHostnames(records)))
 	if len(hostnames) == 0 {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		_, _ = fmt.Fprintln(w, "no eligible hostnames found in browsing history")
@@ -94,7 +108,7 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, record := range hostnames {
-		q.Add("8.8.8.8:53", "A", record+".")
+		q.Add(targetServer, "A", record+".")
 		log.Printf("Added %s", record)
 	}
 	q.SendCompletionSignal()
@@ -112,6 +126,63 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		log.Printf("%+v", result)
 	}
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "benchmarked=%d failures=%d\n", len(hostnames), failures)
+	_, _ = fmt.Fprintf(w, "server=%s benchmarked=%d failures=%d\n", targetServer, len(hostnames), failures)
 	return
+}
+
+func parsePositiveInt(raw string, fallback int) int {
+	n, err := strconv.Atoi(raw)
+	if err != nil || n <= 0 {
+		return fallback
+	}
+	if n > 2000 {
+		return 2000
+	}
+	return n
+}
+
+func parseNameServers(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+
+	chunks := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
+	servers := make([]string, 0, len(chunks))
+	seen := make(map[string]bool, len(chunks))
+
+	for _, chunk := range chunks {
+		server, ok := normalizeNameServer(chunk)
+		if !ok || seen[server] {
+			continue
+		}
+		seen[server] = true
+		servers = append(servers, server)
+	}
+	return servers
+}
+
+func normalizeNameServer(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+
+	// bare IPv4/IPv6 address without explicit port
+	if ip := net.ParseIP(raw); ip != nil {
+		return net.JoinHostPort(ip.String(), "53"), true
+	}
+
+	if !strings.Contains(raw, ":") {
+		raw += ":53"
+	}
+	host, port, err := net.SplitHostPort(raw)
+	if err != nil || host == "" || port == "" {
+		return "", false
+	}
+	if net.ParseIP(host) == nil {
+		return "", false
+	}
+	return net.JoinHostPort(host, port), true
 }

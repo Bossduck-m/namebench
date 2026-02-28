@@ -3,43 +3,118 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="">
-    <meta name="author" content="">
+    <meta name="description" content="namebench modern UI">
+    <meta name="author" content="namebench">
 
-    <title>namebench (v2 alpha)</title>
-    <link href="/static/bootstrap/css/bootstrap.css" rel="stylesheet">
+    <title>namebench</title>
     <link href="/static/index.css" rel="stylesheet">
-    <link href='http://fonts.googleapis.com/css?family=Open+Sans' rel='stylesheet' type='text/css'>
   </head>
 
   <body>
-    <div class="container">
-      <h1>namebench</h1>
-      <p class="lead">Find the fastest DNS server, tuned just for you.</p>
+    <main class="page-shell">
+      <section class="app-frame">
+        <header class="hero">
+          <p class="eyebrow">Namebench Reboot</p>
+          <h1>Find the fastest DNS route for your real browsing patterns.</h1>
+          <p class="subtext">Old workflow, modern control panel. Configure once, benchmark instantly, read results without digging through logs.</p>
+        </header>
 
-      <div class="jumbotron">
-      <form class="form-inline" role="form" method="post">
-        <fieldset>
-          <div class="form-group">
-            <label for="browser">Browser</label>
-            <select id="browser" class="form-control">
-              <option>Google Chrome</option>
-            </select>
-          </div>
-          <div class="form-group">
-            <label for="country">Country</label>
-            <select id="country" class="form-control">
-              <option>United States of America</option>
-            </select>
-          </div>
-          <button type="submit" class="btn btn-primary pull-right">Start!</button>
-        </fieldset>
-      </form>
-    </div>
-    </div>
+        <section class="layout-grid">
+          <form id="benchmark-form" class="config-card" action="/submit" method="post">
+            <h2>Benchmark Setup</h2>
 
-    <!-- Bootstrap core JavaScript
-    ================================================== -->
-    <!-- Placed at the end of the document so the pages load faster -->
+            <label for="nameservers">Nameservers</label>
+            <textarea id="nameservers" name="nameservers" rows="4">192.168.1.1
+8.8.8.8
+1.1.1.1</textarea>
+            <p class="field-hint">Use IP list, one per line (port optional, default is 53).</p>
+
+            <div class="toggles">
+              <label class="toggle-row" for="include-global">
+                <input id="include-global" type="checkbox" name="include_global" checked>
+                <span>Include global DNS providers (Google, OpenDNS, Cloudflare, Quad9)</span>
+              </label>
+              <label class="toggle-row" for="include-regional">
+                <input id="include-regional" type="checkbox" name="include_regional" checked>
+                <span>Include best available regional DNS services</span>
+              </label>
+              <label class="toggle-row" for="censorship-check">
+                <input id="censorship-check" type="checkbox" name="censorship_check">
+                <span>Run censorship and hijack checks</span>
+              </label>
+              <label class="toggle-row" for="share-results">
+                <input id="share-results" type="checkbox" name="share_results">
+                <span>Share anonymized benchmark results</span>
+              </label>
+            </div>
+
+            <div class="field-grid">
+              <div class="field">
+                <label for="location">Your location</label>
+                <select id="location" name="location">
+                  <option value="auto">Auto detect</option>
+                  <option value="none" selected>None</option>
+                  <option value="us">United States</option>
+                  <option value="tr">Turkey</option>
+                  <option value="eu">Europe</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="health-profile">Health check profile</label>
+                <select id="health-profile" name="health_profile">
+                  <option value="fast" selected>Fast</option>
+                  <option value="balanced">Balanced</option>
+                  <option value="thorough">Thorough</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="data-source">Query data source</label>
+                <select id="data-source" name="data_source">
+                  <option value="chrome" selected>Google Chrome</option>
+                  <option value="firefox">Mozilla Firefox</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="query-count">Number of queries</label>
+                <input id="query-count" name="query_count" type="number" min="10" max="2000" value="250">
+              </div>
+            </div>
+
+            <div class="actions">
+              <button id="start-button" class="btn btn-primary" type="submit">Start Benchmark</button>
+              <button id="dnssec-button" class="btn btn-muted" type="button">Quick DNSSEC Check</button>
+            </div>
+          </form>
+
+          <aside class="status-card">
+            <h2>Live Status</h2>
+            <p class="status-line"><span id="status-dot" class="dot"></span><span id="status-text">Ready</span></p>
+            <div class="metrics">
+              <article class="metric">
+                <p class="metric-label">Target server</p>
+                <p id="metric-server" class="metric-value">-</p>
+              </article>
+              <article class="metric">
+                <p class="metric-label">Queries</p>
+                <p id="metric-queries" class="metric-value">0</p>
+              </article>
+              <article class="metric">
+                <p class="metric-label">Failures</p>
+                <p id="metric-failures" class="metric-value">0</p>
+              </article>
+              <article class="metric">
+                <p class="metric-label">Last update</p>
+                <p id="metric-updated" class="metric-value">-</p>
+              </article>
+            </div>
+
+            <label for="result-log">Result log</label>
+            <pre id="result-log" class="result-log">namebench is ready.</pre>
+          </aside>
+        </section>
+      </section>
+    </main>
+
+    <script src="/static/index.js"></script>
   </body>
 </html>

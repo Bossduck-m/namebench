@@ -47,6 +47,22 @@ You can disable auto-open:
 ./namebench -port 8080 -open_browser=false
 ```
 
+## Windows: no terminal typing
+
+You have two options:
+
+1. One-time local build with double-click:
+   - Double-click `build_windows_gui.bat`
+   - It builds `namebench.exe` and launches it automatically
+
+2. Prebuilt EXE from GitHub Actions artifact:
+   - Go to `Actions` tab
+   - Run workflow `Build Windows EXE` (or use a tagged run)
+   - Download artifact `namebench-windows-amd64`
+   - Extract and double-click `namebench.exe`
+
+The app uses a random local port by default (`-port=0`) and opens your browser automatically.
+
 ## How to use
 
 1. Enter one or more DNS servers in the `Nameservers` box (one per line).
@@ -77,4 +93,5 @@ Disable both checkboxes to test only manually entered servers.
 
 ## Release notes
 
-- See [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)
+- See [RELEASE_NOTES_v0.2.1.md](RELEASE_NOTES_v0.2.1.md)
+- Previous: [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)

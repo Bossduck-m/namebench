@@ -12,7 +12,7 @@ import (
 	"github.com/google/namebench/ui"
 )
 
-var port = flag.Int("port", 8080, "Port to listen on (0 picks a random local port)")
+var port = flag.Int("port", 0, "Port to listen on (0 picks a random local port)")
 var openBrowserFlag = flag.Bool("open_browser", true, "Open the default browser automatically")
 
 // openBrowser opens the system default browser at the given URL.

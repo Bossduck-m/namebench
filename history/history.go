@@ -8,7 +8,7 @@ import (
 	"log"
 	"os"
 
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 // unlockDatabase is a bad hack for opening potentially locked SQLite databases.
@@ -66,7 +66,7 @@ func Chrome(days int) (urls []string, err error) {
 		}
 		defer os.Remove(unlocked_path)
 
-		db, err := sql.Open("sqlite3", unlocked_path)
+		db, err := sql.Open("sqlite", unlocked_path)
 		if err != nil {
 			return nil, err
 		}

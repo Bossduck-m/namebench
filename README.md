@@ -15,7 +15,6 @@ This fork adds:
 ## Requirements
 
 - Go 1.22+
-- C compiler toolchain for `github.com/mattn/go-sqlite3` (CGO dependency)
 
 ## Build
 

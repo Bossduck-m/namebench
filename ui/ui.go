@@ -2,6 +2,7 @@
 package ui
 
 import (
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
@@ -58,6 +59,8 @@ func Index(w http.ResponseWriter, r *http.Request) {
 
 // DnsSec handles /dnssec
 func DnsSec(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+
 	servers := []string{
 		"8.8.8.8:53",
 		"75.75.75.75:53",
@@ -66,7 +69,11 @@ func DnsSec(w http.ResponseWriter, r *http.Request) {
 	}
 	for _, ip := range servers {
 		result, err := dnschecks.DnsSec(ip)
-		log.Printf("%s DNSSEC: %s (%s)", ip, result, err)
+		log.Printf("%s DNSSEC: %t (err=%v)", ip, result, err)
+		if _, writeErr := fmt.Fprintf(w, "%s dnssec=%t err=%v\n", ip, result, err); writeErr != nil {
+			log.Printf("failed to write dnssec response: %v", writeErr)
+			return
+		}
 	}
 }
 
@@ -74,11 +81,17 @@ func DnsSec(w http.ResponseWriter, r *http.Request) {
 func Submit(w http.ResponseWriter, r *http.Request) {
 	records, err := history.Chrome(HISTORY_DAYS)
 	if err != nil {
-		panic(err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
 	q := dnsqueue.StartQueue(QUEUE_LENGTH, WORKERS)
 	hostnames := history.Random(COUNT, history.Uniq(history.ExternalHostnames(records)))
+	if len(hostnames) == 0 {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		_, _ = fmt.Fprintln(w, "no eligible hostnames found in browsing history")
+		return
+	}
 
 	for _, record := range hostnames {
 		q.Add("8.8.8.8:53", "A", record+".")
@@ -86,13 +99,19 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	}
 	q.SendCompletionSignal()
 	answered := 0
+	failures := 0
 	for {
 		if answered == len(hostnames) {
 			break
 		}
 		result := <-q.Results
 		answered += 1
-		log.Printf("%s", result)
+		if result.Error != "" {
+			failures += 1
+		}
+		log.Printf("%+v", result)
 	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	_, _ = fmt.Fprintf(w, "benchmarked=%d failures=%d\n", len(hostnames), failures)
 	return
 }

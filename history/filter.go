@@ -2,15 +2,16 @@
 package history
 
 import (
-	"golang.org/x/net/publicsuffix"
 	"log"
 	"math/rand"
 	"net/url"
 	"regexp"
+
+	"golang.org/x/net/publicsuffix"
 )
 
 var (
-	internal_re = regexp.MustCompile(`\.corp|\.sandbox\.|\.borg\.|\.hot\.|internal|dmz|\._[ut][dc]p\.|intra|\.\w$|\.\w{5,}$`)
+	internalRe = regexp.MustCompile(`\.corp|\.sandbox\.|\.borg\.|\.hot\.|internal|dmz|\._[ut][dc]p\.|intra|\.\w$|\.\w{5,}$`)
 )
 
 func isPossiblyInternal(addr string) bool {
@@ -20,7 +21,7 @@ func isPossiblyInternal(addr string) bool {
 		log.Printf("%s does not have a public suffix", addr)
 		return true
 	}
-	if internal_re.MatchString(addr) {
+	if internalRe.MatchString(addr) {
 		log.Printf("%s may be internal.", addr)
 		return true
 	}
@@ -29,8 +30,6 @@ func isPossiblyInternal(addr string) bool {
 
 // Filter out external hostnames from history
 func ExternalHostnames(entries []string) (hostnames []string) {
-	counter := 0
-
 	for _, uString := range entries {
 		u, err := url.ParseRequestURI(uString)
 		if err != nil {
@@ -38,7 +37,6 @@ func ExternalHostnames(entries []string) (hostnames []string) {
 			continue
 		}
 		if !isPossiblyInternal(u.Host) {
-			counter += 1
 			hostnames = append(hostnames, u.Host)
 		}
 	}
@@ -51,6 +49,7 @@ func Uniq(input []string) (output []string) {
 	for _, i := range input {
 		if i != last {
 			output = append(output, i)
+			last = i
 		}
 	}
 	return
@@ -58,6 +57,13 @@ func Uniq(input []string) (output []string) {
 
 // Randomly select X number of entries.
 func Random(count int, input []string) (output []string) {
+	if count <= 0 || len(input) == 0 {
+		return nil
+	}
+	if count > len(input) {
+		count = len(input)
+	}
+
 	selected := make(map[int]bool)
 
 	for {

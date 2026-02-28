@@ -4,9 +4,10 @@ package dnsqueue
 import (
 	"errors"
 	"fmt"
-	"github.com/miekg/dns"
 	"log"
 	"time"
+
+	"github.com/miekg/dns"
 )
 
 // Request contains data for making a DNS request
@@ -83,7 +84,7 @@ func startWorker(queue <-chan *Request, results chan<- *Result) {
 		if err != nil {
 			log.Printf("Error sending query: %s", err)
 		}
-		log.Printf("Sending back result: %s", result)
+		log.Printf("Sending back result: %+v", result)
 		results <- &result
 	}
 }
@@ -92,21 +93,21 @@ func startWorker(queue <-chan *Request, results chan<- *Result) {
 // stores response details in Result object, otherwise, returns Result object
 // with an error string.
 func SendQuery(request *Request) (result Result, err error) {
-	log.Printf("Sending query: %s", request)
+	log.Printf("Sending query: %+v", request)
 	result.Request = *request
 
-	record_type, ok := dns.StringToType[request.RecordType]
+	recordType, ok := dns.StringToType[request.RecordType]
 	if !ok {
 		result.Error = fmt.Sprintf("Invalid type: %s", request.RecordType)
 		return result, errors.New(result.Error)
 	}
 
 	m := new(dns.Msg)
-	if request.VerifySignature == true {
+	if request.VerifySignature {
 		log.Printf("SetEdns0 for %s", request.RecordName)
 		m.SetEdns0(4096, true)
 	}
-	m.SetQuestion(request.RecordName, record_type)
+	m.SetQuestion(request.RecordName, recordType)
 	c := new(dns.Client)
 	in, rtt, err := c.Exchange(m, request.Destination)
 	// log.Printf("Answer: %s [%d] %s", in, rtt, err)
@@ -124,5 +125,5 @@ func SendQuery(request *Request) (result Result, err error) {
 			result.Answers = append(result.Answers, answer)
 		}
 	}
-	return result, nil
+	return result, err
 }

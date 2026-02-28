@@ -19,7 +19,9 @@ var port = flag.Int("port", 0, "Port to listen on")
 
 // openWindow opens a nodejs-webkit window, and points it at the given URL.
 func openWindow(url string) (err error) {
-	os.Setenv("APP_URL", url)
+	if err := os.Setenv("APP_URL", url); err != nil {
+		return err
+	}
 	cmd := exec.Command(*nw_path, *nw_package)
 	if err := cmd.Run(); err != nil {
 		log.Printf("error running %s %s: %s", *nw_path, *nw_package, err)
@@ -45,7 +47,13 @@ func main() {
 		}
 		url := fmt.Sprintf("http://%s/", listener.Addr().String())
 		log.Printf("URL: %s", url)
-		go openWindow(url)
-		panic(http.Serve(listener, nil))
+		go func() {
+			if err := openWindow(url); err != nil {
+				log.Printf("window launch failed: %v", err)
+			}
+		}()
+		if err := http.Serve(listener, nil); err != nil {
+			log.Fatalf("HTTP server error: %v", err)
+		}
 	}
 }

@@ -4,22 +4,22 @@ package history
 import (
 	"database/sql"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // unlockDatabase is a bad hack for opening potentially locked SQLite databases.
-func unlockDatabase(path string) (unlocked_path string, err error) {
+func unlockDatabase(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
 
-	t, err := ioutil.TempFile("", "")
+	t, err := os.CreateTemp("", "namebench-history-*")
 	if err != nil {
 		return "", err
 	}
@@ -30,7 +30,7 @@ func unlockDatabase(path string) (unlocked_path string, err error) {
 		return "", err
 	}
 	log.Printf("%d bytes written to %s", written, t.Name())
-	return t.Name(), err
+	return t.Name(), nil
 }
 
 // Chrome returns an array of URLs found in Chrome's history within X days
@@ -53,8 +53,11 @@ func Chrome(days int) (urls []string, err error) {
 		path := os.ExpandEnv(p)
 		log.Printf("Checking %s", path)
 		_, err := os.Stat(path)
-		if err != nil {
+		if os.IsNotExist(err) {
 			continue
+		}
+		if err != nil {
+			return nil, err
 		}
 
 		unlocked_path, err := unlockDatabase(path)
@@ -67,19 +70,25 @@ func Chrome(days int) (urls []string, err error) {
 		if err != nil {
 			return nil, err
 		}
+		defer db.Close()
 
 		rows, err := db.Query(query)
 		if err != nil {
 			log.Printf("Query failed: %s", err)
 			return nil, err
 		}
+		defer rows.Close()
 		var url string
 		for rows.Next() {
-			rows.Scan(&url)
+			if err := rows.Scan(&url); err != nil {
+				return nil, err
+			}
 			urls = append(urls, url)
 		}
-		rows.Close()
-		return urls, err
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+		return urls, nil
 	}
-	return
+	return nil, nil
 }

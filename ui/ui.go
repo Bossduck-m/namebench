@@ -113,6 +113,14 @@ type benchmarkResponse struct {
 	Warnings         []string          `json:"warnings,omitempty"`
 }
 
+type requestConfig struct {
+	QueryCount      int    `json:"query_count"`
+	IncludeGlobal   bool   `json:"include_global"`
+	IncludeRegional bool   `json:"include_regional"`
+	Location        string `json:"location"`
+	Nameservers     string `json:"nameservers"`
+}
+
 // RegisterHandler registers all known handlers.
 func RegisterHandlers() {
 	staticFS, err := fs.Sub(uiAssets, "static")
@@ -146,15 +154,16 @@ func Index(w http.ResponseWriter, r *http.Request) {
 func DnsSec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	if err := parseIncomingForm(r); err != nil {
+	cfg, err := parseRequestConfig(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	nameServers := parseNameServers(r.FormValue("nameservers"))
-	includeGlobal := formEnabled(r, "include_global")
-	includeRegional := formEnabled(r, "include_regional")
-	location := strings.ToLower(strings.TrimSpace(r.FormValue("location")))
+	nameServers := parseNameServers(cfg.Nameservers)
+	includeGlobal := cfg.IncludeGlobal
+	includeRegional := cfg.IncludeRegional
+	location := cfg.Location
 
 	servers := []string{}
 	if r.Method == http.MethodPost {
@@ -183,17 +192,18 @@ func DnsSec(w http.ResponseWriter, r *http.Request) {
 
 // Submit handles /submit
 func Submit(w http.ResponseWriter, r *http.Request) {
-	if err := parseIncomingForm(r); err != nil {
+	cfg, err := parseRequestConfig(r)
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	queryCount := parsePositiveInt(r.FormValue("query_count"), COUNT)
-	includeGlobal := formEnabled(r, "include_global")
-	includeRegional := formEnabled(r, "include_regional")
-	location := strings.ToLower(strings.TrimSpace(r.FormValue("location")))
+	queryCount := cfg.QueryCount
+	includeGlobal := cfg.IncludeGlobal
+	includeRegional := cfg.IncludeRegional
+	location := cfg.Location
 
-	rawNameservers := strings.TrimSpace(r.FormValue("nameservers"))
+	rawNameservers := cfg.Nameservers
 	nameServers := parseNameServers(rawNameservers)
 	candidateServers := mergeNameServers(nameServers, includeGlobal, includeRegional, location)
 	warnings := make([]string, 0, 2)
@@ -489,6 +499,33 @@ func parseIncomingForm(r *http.Request) error {
 		return err
 	}
 	return r.ParseForm()
+}
+
+func parseRequestConfig(r *http.Request) (requestConfig, error) {
+	cfg := requestConfig{
+		QueryCount: COUNT,
+	}
+
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.Contains(contentType, "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			return requestConfig{}, err
+		}
+		cfg.QueryCount = parsePositiveInt(strconv.Itoa(cfg.QueryCount), COUNT)
+		cfg.Location = strings.ToLower(strings.TrimSpace(cfg.Location))
+		cfg.Nameservers = strings.TrimSpace(cfg.Nameservers)
+		return cfg, nil
+	}
+
+	if err := parseIncomingForm(r); err != nil {
+		return requestConfig{}, err
+	}
+	cfg.QueryCount = parsePositiveInt(r.FormValue("query_count"), COUNT)
+	cfg.IncludeGlobal = formEnabled(r, "include_global")
+	cfg.IncludeRegional = formEnabled(r, "include_regional")
+	cfg.Location = strings.ToLower(strings.TrimSpace(r.FormValue("location")))
+	cfg.Nameservers = strings.TrimSpace(r.FormValue("nameservers"))
+	return cfg, nil
 }
 
 func ensureFQDN(record string) string {

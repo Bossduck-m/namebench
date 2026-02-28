@@ -93,5 +93,5 @@ Disable both checkboxes to test only manually entered servers.
 
 ## Release notes
 
-- See [RELEASE_NOTES_v0.2.3.md](RELEASE_NOTES_v0.2.3.md)
-- Previous: [RELEASE_NOTES_v0.2.2.md](RELEASE_NOTES_v0.2.2.md), [RELEASE_NOTES_v0.2.1.md](RELEASE_NOTES_v0.2.1.md), [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)
+- See [RELEASE_NOTES_v0.2.4.md](RELEASE_NOTES_v0.2.4.md)
+- Previous: [RELEASE_NOTES_v0.2.3.md](RELEASE_NOTES_v0.2.3.md), [RELEASE_NOTES_v0.2.2.md](RELEASE_NOTES_v0.2.2.md), [RELEASE_NOTES_v0.2.1.md](RELEASE_NOTES_v0.2.1.md), [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)

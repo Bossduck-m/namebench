@@ -250,13 +250,18 @@
     return lines.join("\n");
   }
 
-  function buildUrlEncodedBody(form) {
-    var params = new URLSearchParams();
-    var data = new FormData(form);
-    data.forEach(function (value, key) {
-      params.append(key, String(value));
-    });
-    return params.toString();
+  function getConfigPayload() {
+    return {
+      nameservers: byId("nameservers").value || "",
+      include_global: byId("include-global").checked,
+      include_regional: byId("include-regional").checked,
+      censorship_check: byId("censorship-check").checked,
+      share_results: byId("share-results").checked,
+      location: byId("location").value || "",
+      health_profile: byId("health-profile").value || "",
+      data_source: byId("data-source").value || "",
+      query_count: asNumber(byId("query-count").value, 0)
+    };
   }
 
   async function runBenchmark(event) {
@@ -273,9 +278,9 @@
         method: "POST",
         headers: {
           "Accept": "application/json",
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+          "Content-Type": "application/json; charset=UTF-8"
         },
-        body: buildUrlEncodedBody(form)
+        body: JSON.stringify(getConfigPayload())
       });
 
       var raw = await response.text();
@@ -305,7 +310,6 @@
 
   async function runDnssecCheck() {
     var button = byId("dnssec-button");
-    var form = byId("benchmark-form");
     button.disabled = true;
     setStatus("running", "DNSSEC checks in progress");
     setLog("dnssec check started...");
@@ -314,9 +318,9 @@
       var response = await fetch("/dnssec", {
         method: "POST",
         headers: {
-          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+          "Content-Type": "application/json; charset=UTF-8"
         },
-        body: buildUrlEncodedBody(form)
+        body: JSON.stringify(getConfigPayload())
       });
       var raw = await response.text();
       if (!response.ok) {

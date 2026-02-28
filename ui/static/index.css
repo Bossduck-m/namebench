@@ -127,6 +127,14 @@ label {
   letter-spacing: 0.05em;
 }
 
+.field-caption {
+  margin: 0.72rem 0 0.33rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
 input,
 select,
 textarea,

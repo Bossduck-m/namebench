@@ -2,9 +2,11 @@
 package ui
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"io/fs"
 	"log"
 	"math"
 	"net"
@@ -33,7 +35,10 @@ const (
 )
 
 var (
-	indexTmpl = loadTemplate("ui/templates/index.html")
+	//go:embed templates static
+	uiAssets embed.FS
+
+	indexTmpl = loadTemplate("templates/index.html")
 
 	globalResolverPool = []string{
 		"8.8.8.8:53",
@@ -102,8 +107,12 @@ type benchmarkResponse struct {
 
 // RegisterHandler registers all known handlers.
 func RegisterHandlers() {
+	staticFS, err := fs.Sub(uiAssets, "static")
+	if err != nil {
+		panic(err)
+	}
 	http.HandleFunc("/", Index)
-	http.Handle("/static/", http.StripPrefix("/static", http.FileServer(http.Dir("ui/static"))))
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 	http.HandleFunc("/submit", Submit)
 	http.HandleFunc("/dnssec", DnsSec)
 }
@@ -111,7 +120,7 @@ func RegisterHandlers() {
 // loadTemplate loads a set of templates.
 func loadTemplate(paths ...string) *template.Template {
 	t := template.New(strings.Join(paths, ","))
-	_, err := t.ParseFiles(paths...)
+	_, err := t.ParseFS(uiAssets, paths...)
 	if err != nil {
 		panic(err)
 	}

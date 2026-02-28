@@ -6,54 +6,54 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
+	"runtime"
 
 	"github.com/google/namebench/ui"
 )
 
-var nw_path = flag.String("nw_path", "/Applications/node-webkit.app/Contents/MacOS/node-webkit",
-	"Path to nodejs-webkit binary")
-var nw_package = flag.String("nw_package", "./ui/app.nw", "Path to nodejs-webkit package")
-var port = flag.Int("port", 0, "Port to listen on")
+var port = flag.Int("port", 8080, "Port to listen on (0 picks a random local port)")
+var openBrowserFlag = flag.Bool("open_browser", true, "Open the default browser automatically")
 
-// openWindow opens a nodejs-webkit window, and points it at the given URL.
-func openWindow(url string) (err error) {
-	if err := os.Setenv("APP_URL", url); err != nil {
-		return err
+// openBrowser opens the system default browser at the given URL.
+func openBrowser(url string) error {
+	switch runtime.GOOS {
+	case "windows":
+		return exec.Command("rundll32", "url.dll,FileProtocolHandler", url).Start()
+	case "darwin":
+		return exec.Command("open", url).Start()
+	default:
+		return exec.Command("xdg-open", url).Start()
 	}
-	cmd := exec.Command(*nw_path, *nw_package)
-	if err := cmd.Run(); err != nil {
-		log.Printf("error running %s %s: %s", *nw_path, *nw_package, err)
-		return err
-	}
-	return
 }
 
 func main() {
 	flag.Parse()
 	ui.RegisterHandlers()
 
-	if *port != 0 {
-		log.Printf("Listening at :%d", *port)
-		err := http.ListenAndServe(fmt.Sprintf(":%d", *port), nil)
-		if err != nil {
-			log.Fatalf("Failed to listen on %d: %s", *port, err)
-		}
-	} else {
-		listener, err := net.Listen("tcp4", "127.0.0.1:0")
-		if err != nil {
-			log.Fatalf("Failed to listen: %s", err)
-		}
-		url := fmt.Sprintf("http://%s/", listener.Addr().String())
-		log.Printf("URL: %s", url)
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", *port)
+	if *port == 0 {
+		listenAddr = "127.0.0.1:0"
+	}
+
+	listener, err := net.Listen("tcp4", listenAddr)
+	if err != nil {
+		log.Fatalf("Failed to listen on %s: %v", listenAddr, err)
+	}
+
+	url := fmt.Sprintf("http://%s/", listener.Addr().String())
+	log.Printf("namebench is listening at %s", url)
+
+	if *openBrowserFlag {
 		go func() {
-			if err := openWindow(url); err != nil {
-				log.Printf("window launch failed: %v", err)
+			if err := openBrowser(url); err != nil {
+				log.Printf("auto-open browser failed: %v", err)
+				log.Printf("open this URL manually: %s", url)
 			}
 		}()
-		if err := http.Serve(listener, nil); err != nil {
-			log.Fatalf("HTTP server error: %v", err)
-		}
+	}
+
+	if err := http.Serve(listener, nil); err != nil {
+		log.Fatalf("HTTP server error: %v", err)
 	}
 }

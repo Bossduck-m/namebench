@@ -28,7 +28,7 @@ go build ./...
 
 ## Run (recommended)
 
-Run in HTTP mode and open the UI in your browser:
+Run in HTTP mode:
 
 ```bash
 # Linux/macOS
@@ -38,9 +38,15 @@ Run in HTTP mode and open the UI in your browser:
 .\\namebench.exe -port 8080
 ```
 
-Then open:
+By default it auto-opens your browser. If browser auto-open is blocked, open manually:
 
 - `http://127.0.0.1:8080/`
+
+You can disable auto-open:
+
+```bash
+./namebench -port 8080 -open_browser=false
+```
 
 ## How to use
 

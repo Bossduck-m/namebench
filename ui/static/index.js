@@ -293,12 +293,16 @@
 
   async function runDnssecCheck() {
     var button = byId("dnssec-button");
+    var form = byId("benchmark-form");
     button.disabled = true;
     setStatus("running", "DNSSEC checks in progress");
     setLog("dnssec check started...");
 
     try {
-      var response = await fetch("/dnssec", { method: "GET" });
+      var response = await fetch("/dnssec", {
+        method: "POST",
+        body: new FormData(form)
+      });
       var raw = await response.text();
       if (!response.ok) {
         throw new Error(raw || ("HTTP " + response.status));

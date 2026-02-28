@@ -1,4 +1,6 @@
 *.py[cod]
+namebench
+namebench.exe
 
 # C extensions
 *.so

@@ -40,6 +40,13 @@ var (
 
 	indexTmpl = loadTemplate("templates/index.html")
 
+	defaultDnsSecServers = []string{
+		"8.8.8.8:53",
+		"75.75.75.75:53",
+		"4.2.2.1:53",
+		"208.67.222.222:53",
+	}
+
 	globalResolverPool = []string{
 		"8.8.8.8:53",
 		"8.8.4.4:53",
@@ -138,12 +145,31 @@ func Index(w http.ResponseWriter, r *http.Request) {
 func DnsSec(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 
-	servers := []string{
-		"8.8.8.8:53",
-		"75.75.75.75:53",
-		"4.2.2.1:53",
-		"208.67.222.222:53",
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
+
+	nameServers := parseNameServers(r.FormValue("nameservers"))
+	includeGlobal := formEnabled(r, "include_global")
+	includeRegional := formEnabled(r, "include_regional")
+	location := strings.ToLower(strings.TrimSpace(r.FormValue("location")))
+
+	servers := []string{}
+	if r.Method == http.MethodPost {
+		servers = mergeNameServers(nameServers, includeGlobal, includeRegional, location)
+	} else {
+		servers = defaultDnsSecServers
+	}
+	if len(servers) == 0 {
+		servers = defaultDnsSecServers
+	}
+
+	if _, err := fmt.Fprintf(w, "checked_servers=%d\n", len(servers)); err != nil {
+		log.Printf("failed to write dnssec response header: %v", err)
+		return
+	}
+
 	for _, ip := range servers {
 		result, err := dnschecks.DnsSec(ip)
 		log.Printf("%s DNSSEC: %t (err=%v)", ip, result, err)

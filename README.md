@@ -61,8 +61,20 @@ You can disable auto-open:
 
 Use `Quick DNSSEC Check` to run DNSSEC checks on known resolvers.
 
+Quick DNSSEC uses the same server selection as the form:
+
+- `Nameservers` list
+- `Include global DNS providers`
+- `Include regional DNS services`
+
+Disable both checkboxes to test only manually entered servers.
+
 ## Notes
 
 - History sampling currently uses Chrome history.
 - UI includes some forward-looking fields (for future expansion).
 - If no valid history records are found, the API returns warnings and empty results.
+
+## Release notes
+
+- See [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)

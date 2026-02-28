@@ -2,11 +2,14 @@
 package ui
 
 import (
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
+	"math"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -31,7 +34,71 @@ const (
 
 var (
 	indexTmpl = loadTemplate("ui/templates/index.html")
+
+	globalResolverPool = []string{
+		"8.8.8.8:53",
+		"8.8.4.4:53",
+		"1.1.1.1:53",
+		"1.0.0.1:53",
+		"9.9.9.9:53",
+		"208.67.222.222:53",
+	}
+
+	defaultRegionalResolverPool = []string{
+		"64.6.64.6:53",
+		"64.6.65.6:53",
+		"76.76.2.0:53",
+	}
+
+	regionalResolverPoolByLocation = map[string][]string{
+		"us": {
+			"64.6.64.6:53",
+			"64.6.65.6:53",
+			"76.76.2.0:53",
+			"76.76.10.0:53",
+		},
+		"eu": {
+			"185.228.168.9:53",
+			"185.228.169.9:53",
+			"9.9.9.11:53",
+		},
+		"tr": {
+			"9.9.9.10:53",
+			"149.112.112.10:53",
+			"1.1.1.2:53",
+		},
+	}
 )
+
+type latencyBucket struct {
+	Label string `json:"label"`
+	Count int    `json:"count"`
+}
+
+type serverBenchmark struct {
+	Rank           int             `json:"rank"`
+	Server         string          `json:"server"`
+	Queries        int             `json:"queries"`
+	Successes      int             `json:"successes"`
+	Failures       int             `json:"failures"`
+	FailureRate    float64         `json:"failure_rate"`
+	AvgMs          float64         `json:"avg_ms"`
+	MedianMs       float64         `json:"median_ms"`
+	P95Ms          float64         `json:"p95_ms"`
+	MinMs          float64         `json:"min_ms"`
+	MaxMs          float64         `json:"max_ms"`
+	Score          float64         `json:"score"`
+	LatencyBuckets []latencyBucket `json:"latency_buckets"`
+}
+
+type benchmarkResponse struct {
+	RequestedQueries int               `json:"requested_queries"`
+	ExecutedQueries  int               `json:"executed_queries"`
+	ServerCount      int               `json:"server_count"`
+	Winner           string            `json:"winner"`
+	Results          []serverBenchmark `json:"results"`
+	Warnings         []string          `json:"warnings,omitempty"`
+}
 
 // RegisterHandler registers all known handlers.
 func RegisterHandlers() {
@@ -56,7 +123,6 @@ func Index(w http.ResponseWriter, r *http.Request) {
 	if err := indexTmpl.ExecuteTemplate(w, "index.html", nil); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
-	return
 }
 
 // DnsSec handles /dnssec
@@ -87,10 +153,15 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queryCount := parsePositiveInt(r.FormValue("query_count"), COUNT)
+	includeGlobal := formEnabled(r, "include_global")
+	includeRegional := formEnabled(r, "include_regional")
+	location := strings.ToLower(strings.TrimSpace(r.FormValue("location")))
+
 	nameServers := parseNameServers(r.FormValue("nameservers"))
-	targetServer := "8.8.8.8:53"
-	if len(nameServers) > 0 {
-		targetServer = nameServers[0]
+	candidateServers := mergeNameServers(nameServers, includeGlobal, includeRegional, location)
+	warnings := make([]string, 0, 2)
+	if len(nameServers) == 0 {
+		warnings = append(warnings, "No manual nameserver provided, using default provider pools.")
 	}
 
 	records, err := history.Chrome(HISTORY_DAYS)
@@ -99,35 +170,186 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	q := dnsqueue.StartQueue(QUEUE_LENGTH, WORKERS)
 	hostnames := history.Random(queryCount, history.Uniq(history.ExternalHostnames(records)))
 	if len(hostnames) == 0 {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = fmt.Fprintln(w, "no eligible hostnames found in browsing history")
+		warnings = append(warnings, "No eligible hostnames found in browsing history.")
+		writeJSON(w, http.StatusOK, benchmarkResponse{
+			RequestedQueries: queryCount,
+			ExecutedQueries:  0,
+			ServerCount:      len(candidateServers),
+			Winner:           "",
+			Results:          []serverBenchmark{},
+			Warnings:         warnings,
+		})
 		return
 	}
 
+	results := benchmarkAllServers(candidateServers, hostnames)
+	winner := selectWinner(results)
+	if winner == "" && len(results) > 0 {
+		winner = results[0].Server
+		warnings = append(warnings, "No server returned successful answers. Ranking falls back to penalty score.")
+	}
+
+	writeJSON(w, http.StatusOK, benchmarkResponse{
+		RequestedQueries: queryCount,
+		ExecutedQueries:  len(hostnames),
+		ServerCount:      len(candidateServers),
+		Winner:           winner,
+		Results:          results,
+		Warnings:         warnings,
+	})
+}
+
+func benchmarkAllServers(servers []string, hostnames []string) []serverBenchmark {
+	results := make([]serverBenchmark, 0, len(servers))
+	for _, server := range servers {
+		result := benchmarkSingleServer(server, hostnames)
+		results = append(results, result)
+	}
+
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].Score == results[j].Score {
+			return results[i].Server < results[j].Server
+		}
+		return results[i].Score < results[j].Score
+	})
+	for i := range results {
+		results[i].Rank = i + 1
+	}
+	return results
+}
+
+func benchmarkSingleServer(server string, hostnames []string) serverBenchmark {
+	q := dnsqueue.StartQueue(QUEUE_LENGTH, WORKERS)
 	for _, record := range hostnames {
-		q.Add(targetServer, "A", record+".")
-		log.Printf("Added %s", record)
+		q.Add(server, "A", ensureFQDN(record))
 	}
 	q.SendCompletionSignal()
-	answered := 0
+
+	latencies := make([]float64, 0, len(hostnames))
 	failures := 0
-	for {
-		if answered == len(hostnames) {
-			break
-		}
+	for i := 0; i < len(hostnames); i++ {
 		result := <-q.Results
-		answered += 1
-		if result.Error != "" {
-			failures += 1
+		if result.Error != "" || len(result.Answers) == 0 {
+			failures++
+			continue
 		}
-		log.Printf("%+v", result)
+		ms := float64(result.Duration.Microseconds()) / 1000.0
+		if ms < 0 {
+			ms = 0
+		}
+		latencies = append(latencies, ms)
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	_, _ = fmt.Fprintf(w, "server=%s benchmarked=%d failures=%d\n", targetServer, len(hostnames), failures)
-	return
+
+	avgMs, medianMs, p95Ms, minMs, maxMs := summarizeLatencies(latencies)
+	queries := len(hostnames)
+	successes := len(latencies)
+	failureRate := 0.0
+	if queries > 0 {
+		failureRate = float64(failures) / float64(queries)
+	}
+
+	return serverBenchmark{
+		Server:         server,
+		Queries:        queries,
+		Successes:      successes,
+		Failures:       failures,
+		FailureRate:    round2(failureRate),
+		AvgMs:          avgMs,
+		MedianMs:       medianMs,
+		P95Ms:          p95Ms,
+		MinMs:          minMs,
+		MaxMs:          maxMs,
+		Score:          scoreServer(avgMs, p95Ms, failures, queries),
+		LatencyBuckets: buildLatencyBuckets(latencies),
+	}
+}
+
+func summarizeLatencies(samples []float64) (avg, median, p95, min, max float64) {
+	if len(samples) == 0 {
+		return 0, 0, 0, 0, 0
+	}
+
+	sorted := make([]float64, len(samples))
+	copy(sorted, samples)
+	sort.Float64s(sorted)
+
+	sum := 0.0
+	for _, v := range sorted {
+		sum += v
+	}
+	avg = sum / float64(len(sorted))
+
+	if len(sorted)%2 == 1 {
+		median = sorted[len(sorted)/2]
+	} else {
+		mid := len(sorted) / 2
+		median = (sorted[mid-1] + sorted[mid]) / 2
+	}
+
+	p95Index := int(math.Ceil(float64(len(sorted))*0.95)) - 1
+	if p95Index < 0 {
+		p95Index = 0
+	}
+	if p95Index >= len(sorted) {
+		p95Index = len(sorted) - 1
+	}
+	p95 = sorted[p95Index]
+
+	min = sorted[0]
+	max = sorted[len(sorted)-1]
+	return round2(avg), round2(median), round2(p95), round2(min), round2(max)
+}
+
+func buildLatencyBuckets(samples []float64) []latencyBucket {
+	buckets := []latencyBucket{
+		{Label: "0-20 ms", Count: 0},
+		{Label: "20-40 ms", Count: 0},
+		{Label: "40-80 ms", Count: 0},
+		{Label: "80-160 ms", Count: 0},
+		{Label: "160-320 ms", Count: 0},
+		{Label: "320+ ms", Count: 0},
+	}
+
+	for _, ms := range samples {
+		switch {
+		case ms < 20:
+			buckets[0].Count++
+		case ms < 40:
+			buckets[1].Count++
+		case ms < 80:
+			buckets[2].Count++
+		case ms < 160:
+			buckets[3].Count++
+		case ms < 320:
+			buckets[4].Count++
+		default:
+			buckets[5].Count++
+		}
+	}
+	return buckets
+}
+
+func selectWinner(results []serverBenchmark) string {
+	for _, result := range results {
+		if result.Successes > 0 {
+			return result.Server
+		}
+	}
+	return ""
+}
+
+func scoreServer(avgMs, p95Ms float64, failures, queries int) float64 {
+	if queries <= 0 {
+		return 0
+	}
+	if failures >= queries {
+		return 999999
+	}
+	failureRate := float64(failures) / float64(queries)
+	score := avgMs + (0.18 * p95Ms) + (failureRate * 900)
+	return round2(score)
 }
 
 func parsePositiveInt(raw string, fallback int) int {
@@ -163,6 +385,38 @@ func parseNameServers(raw string) []string {
 	return servers
 }
 
+func mergeNameServers(manual []string, includeGlobal, includeRegional bool, location string) []string {
+	merged := make([]string, 0, len(manual)+8)
+	seen := map[string]bool{}
+
+	appendUnique := func(values []string) {
+		for _, value := range values {
+			server, ok := normalizeNameServer(value)
+			if !ok || seen[server] {
+				continue
+			}
+			seen[server] = true
+			merged = append(merged, server)
+		}
+	}
+
+	appendUnique(manual)
+	if includeGlobal {
+		appendUnique(globalResolverPool)
+	}
+	if includeRegional {
+		if regional, ok := regionalResolverPoolByLocation[location]; ok {
+			appendUnique(regional)
+		} else {
+			appendUnique(defaultRegionalResolverPool)
+		}
+	}
+	if len(merged) == 0 {
+		appendUnique([]string{"8.8.8.8:53"})
+	}
+	return merged
+}
+
 func normalizeNameServer(raw string) (string, bool) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -185,4 +439,29 @@ func normalizeNameServer(raw string) (string, bool) {
 		return "", false
 	}
 	return net.JoinHostPort(host, port), true
+}
+
+func formEnabled(r *http.Request, key string) bool {
+	return strings.TrimSpace(r.FormValue(key)) != ""
+}
+
+func ensureFQDN(record string) string {
+	if strings.HasSuffix(record, ".") {
+		return record
+	}
+	return record + "."
+}
+
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
+func writeJSON(w http.ResponseWriter, status int, payload interface{}) {
+	w.Header().Set("Content-Type", "application/json; charset=utf-8")
+	w.WriteHeader(status)
+	encoder := json.NewEncoder(w)
+	encoder.SetEscapeHTML(false)
+	if err := encoder.Encode(payload); err != nil {
+		log.Printf("failed to encode response: %v", err)
+	}
 }

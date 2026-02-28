@@ -10,6 +10,7 @@
   --primary-strong: #14b8a6;
   --accent: #fb923c;
   --danger: #f97316;
+  --ok: #22c55e;
   --shadow: 0 20px 60px rgba(2, 6, 23, 0.5);
 }
 
@@ -36,7 +37,7 @@ body {
 }
 
 .app-frame {
-  width: min(1120px, 100%);
+  width: min(1160px, 100%);
   background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.7));
   border: 1px solid rgba(148, 163, 184, 0.25);
   border-radius: 20px;
@@ -83,7 +84,8 @@ body {
 }
 
 .config-card,
-.status-card {
+.status-card,
+.results-card {
   background: var(--card);
   border: 1px solid rgba(148, 163, 184, 0.28);
   border-radius: 14px;
@@ -98,10 +100,21 @@ body {
   animation: fade-up 700ms ease both;
 }
 
+.results-card {
+  margin-top: 1rem;
+  animation: fade-up 800ms ease both;
+}
+
 h2 {
   margin: 0 0 0.9rem;
   font-size: 1.15rem;
   font-family: "Franklin Gothic Medium", "Arial Narrow", sans-serif;
+}
+
+h3 {
+  margin: 0;
+  font-size: 0.96rem;
+  color: #dbeafe;
 }
 
 label {
@@ -202,6 +215,11 @@ input[type="number"]:focus,
   transform: translateY(0);
 }
 
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .btn-primary {
   background: linear-gradient(135deg, var(--primary), var(--primary-strong));
   color: #042f2e;
@@ -226,7 +244,7 @@ input[type="number"]:focus,
   width: 0.64rem;
   height: 0.64rem;
   border-radius: 999px;
-  background: #22c55e;
+  background: var(--ok);
   box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.55);
 }
 
@@ -267,6 +285,7 @@ input[type="number"]:focus,
   margin: 0.25rem 0 0;
   font-size: 1rem;
   font-weight: 700;
+  word-break: break-word;
 }
 
 .result-log {
@@ -283,13 +302,152 @@ input[type="number"]:focus,
   color: #cbd5e1;
 }
 
-@media (max-width: 980px) {
+.results-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.7rem;
+}
+
+.winner-banner {
+  margin: 0;
+  border: 1px solid rgba(20, 184, 166, 0.4);
+  border-radius: 999px;
+  padding: 0.34rem 0.7rem;
+  color: #99f6e4;
+  background: rgba(13, 148, 136, 0.18);
+  font-size: 0.84rem;
+}
+
+.table-wrap {
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 11px;
+}
+
+#results-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 760px;
+}
+
+#results-table th,
+#results-table td {
+  padding: 0.56rem 0.65rem;
+  text-align: left;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  font-size: 0.86rem;
+}
+
+#results-table th {
+  color: #cbd5e1;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: rgba(15, 23, 42, 0.85);
+}
+
+#results-table tbody tr:nth-child(odd) {
+  background: rgba(15, 23, 42, 0.44);
+}
+
+#results-table tbody tr:hover {
+  background: rgba(30, 41, 59, 0.65);
+}
+
+#results-table tbody tr.winner-row {
+  border-left: 3px solid var(--primary-strong);
+  background: rgba(13, 148, 136, 0.16);
+}
+
+.empty-cell {
+  color: var(--muted);
+  text-align: center;
+}
+
+.charts-grid {
+  display: grid;
+  margin-top: 0.9rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.chart-card {
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.58);
+  padding: 0.7rem;
+}
+
+.bar-chart {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.52rem;
+}
+
+.bar-row {
+  display: grid;
+  grid-template-columns: 88px 1fr 72px;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.bar-label {
+  color: #cbd5e1;
+  font-size: 0.77rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bar-track {
+  width: 100%;
+  height: 0.6rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-strong));
+  transition: width 420ms ease;
+}
+
+.bar-fill.error-fill {
+  background: linear-gradient(90deg, #f59e0b, #f97316);
+}
+
+.bar-fill.dist-fill {
+  background: linear-gradient(90deg, #60a5fa, #3b82f6);
+}
+
+.bar-value {
+  text-align: right;
+  color: #e2e8f0;
+  font-size: 0.78rem;
+}
+
+.empty-state {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+@media (max-width: 1050px) {
   .layout-grid {
     grid-template-columns: 1fr;
   }
 
   .metrics {
     grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .charts-grid {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -310,6 +468,10 @@ input[type="number"]:focus,
 
   .btn {
     width: 100%;
+  }
+
+  .bar-row {
+    grid-template-columns: 66px 1fr 56px;
   }
 }
 

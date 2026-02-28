@@ -16,7 +16,7 @@
         <header class="hero">
           <p class="eyebrow">Namebench Reboot</p>
           <h1>Find the fastest DNS route for your real browsing patterns.</h1>
-          <p class="subtext">Old workflow, modern control panel. Configure once, benchmark instantly, read results without digging through logs.</p>
+          <p class="subtext">Configure providers, run against sampled browser history, and compare results with ranked metrics and visual charts.</p>
         </header>
 
         <section class="layout-grid">
@@ -91,15 +91,15 @@
             <p class="status-line"><span id="status-dot" class="dot"></span><span id="status-text">Ready</span></p>
             <div class="metrics">
               <article class="metric">
-                <p class="metric-label">Target server</p>
+                <p class="metric-label">Winner</p>
                 <p id="metric-server" class="metric-value">-</p>
               </article>
               <article class="metric">
-                <p class="metric-label">Queries</p>
+                <p class="metric-label">Queries run</p>
                 <p id="metric-queries" class="metric-value">0</p>
               </article>
               <article class="metric">
-                <p class="metric-label">Failures</p>
+                <p class="metric-label">Total failures</p>
                 <p id="metric-failures" class="metric-value">0</p>
               </article>
               <article class="metric">
@@ -111,6 +111,52 @@
             <label for="result-log">Result log</label>
             <pre id="result-log" class="result-log">namebench is ready.</pre>
           </aside>
+        </section>
+
+        <section class="results-card">
+          <div class="results-head">
+            <h2>Benchmark Results</h2>
+            <p id="winner-banner" class="winner-banner">Run benchmark to populate rankings.</p>
+          </div>
+
+          <div class="table-wrap">
+            <table id="results-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Server</th>
+                  <th>Score</th>
+                  <th>Avg (ms)</th>
+                  <th>P95 (ms)</th>
+                  <th>Fail %</th>
+                  <th>Success</th>
+                  <th>Fail</th>
+                </tr>
+              </thead>
+              <tbody id="results-body">
+                <tr>
+                  <td colspan="8" class="empty-cell">No benchmark data yet.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="charts-grid">
+            <article class="chart-card">
+              <h3>Average Latency by Server</h3>
+              <div id="latency-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
+            </article>
+
+            <article class="chart-card">
+              <h3>Error Rate by Server</h3>
+              <div id="error-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
+            </article>
+
+            <article class="chart-card">
+              <h3>Winner Latency Distribution</h3>
+              <div id="distribution-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
+            </article>
+          </div>
         </section>
       </section>
     </main>

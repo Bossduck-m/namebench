@@ -1,37 +1,63 @@
-namebench 2.0
-=============
-namebench provides personalized DNS server recommendations based on your
-browsing history.
+# namebench (modernized fork)
 
-WARNING: This tool is in the midst of a major rewrite. The "master" branch is currently in experimental
-form and currently lacks a user interface, nor does it support any command-line options.
+namebench benchmarks DNS resolvers against sampled real-world hostnames from browser history, then ranks servers by latency and reliability.
 
-For stable binaries, please see https://code.google.com/p/namebench/
+## Current status
 
-What can one expect in namebench 2.0?
+This fork adds:
 
-* Faster
-* Simpler interface
-* More comprehensive results
-* CDN benchmarking
-* DNSSEC support
+- Modern responsive web UI
+- Multi-server benchmark ranking
+- Score table (rank, avg, p95, fail rate, success/fail)
+- Visual charts (latency, error rate, winner distribution)
+- DNSSEC quick-check endpoint
 
+## Requirements
 
-BUILDING:
-=========
-Building requires Go 1.22+ to be installed: https://go.dev/dl/
+- Go 1.22+
+- C compiler toolchain for `github.com/mattn/go-sqlite3` (CGO dependency)
 
-```
-git clone https://github.com/google/namebench.git
+## Build
+
+```bash
+git clone https://github.com/<your-user>/namebench.git
 cd namebench
 go mod tidy
 go build ./...
 ```
 
-You should have an executable named `namebench` in the current directory (platform-specific extension may apply, such as `.exe` on Windows).
+## Run (recommended)
 
+Run in HTTP mode and open the UI in your browser:
 
-RUNNING:
-========
-* End-user: run ./namebench, which should open up a UI window.
-* Developer, run ./namebench_dev_server.sh for an auto-reloading webserver at http://localhost:9080/
+```bash
+# Linux/macOS
+./namebench -port 8080
+
+# Windows
+.\\namebench.exe -port 8080
+```
+
+Then open:
+
+- `http://127.0.0.1:8080/`
+
+## How to use
+
+1. Enter one or more DNS servers in the `Nameservers` box (one per line).
+2. Optionally enable global/regional provider pools.
+3. Set `Number of queries`.
+4. Click `Start Benchmark`.
+5. Review:
+   - Winner banner
+   - Ranked results table
+   - Latency/Error charts
+   - Winner latency distribution chart
+
+Use `Quick DNSSEC Check` to run DNSSEC checks on known resolvers.
+
+## Notes
+
+- History sampling currently uses Chrome history.
+- UI includes some forward-looking fields (for future expansion).
+- If no valid history records are found, the API returns warnings and empty results.

@@ -31,20 +31,20 @@ Run in HTTP mode:
 
 ```bash
 # Linux/macOS
-./namebench -port 8080
+./namebench -port 8100
 
 # Windows
-.\\namebench.exe -port 8080
+.\\namebench.exe -port 8100
 ```
 
 By default it auto-opens your browser. If browser auto-open is blocked, open manually:
 
-- `http://127.0.0.1:8080/`
+- `http://127.0.0.1:8100/`
 
 You can disable auto-open:
 
 ```bash
-./namebench -port 8080 -open_browser=false
+./namebench -port 8100 -open_browser=false
 ```
 
 ## Windows: no terminal typing
@@ -61,7 +61,7 @@ You have two options:
    - Download artifact `namebench-windows-amd64`
    - Extract and double-click `namebench.exe`
 
-The app uses a random local port by default (`-port=0`) and opens your browser automatically.
+Default port is `8100`. You can override with `-port <value>`.
 
 ## How to use
 
@@ -93,5 +93,5 @@ Disable both checkboxes to test only manually entered servers.
 
 ## Release notes
 
-- See [RELEASE_NOTES_v0.2.1.md](RELEASE_NOTES_v0.2.1.md)
-- Previous: [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)
+- See [RELEASE_NOTES_v0.2.2.md](RELEASE_NOTES_v0.2.2.md)
+- Previous: [RELEASE_NOTES_v0.2.1.md](RELEASE_NOTES_v0.2.1.md), [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)

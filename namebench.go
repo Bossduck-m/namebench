@@ -12,7 +12,7 @@ import (
 	"github.com/google/namebench/ui"
 )
 
-var port = flag.Int("port", 0, "Port to listen on (0 picks a random local port)")
+var port = flag.Int("port", 8100, "Port to listen on")
 var openBrowserFlag = flag.Bool("open_browser", true, "Open the default browser automatically")
 
 // openBrowser opens the system default browser at the given URL.
@@ -32,9 +32,6 @@ func main() {
 	ui.RegisterHandlers()
 
 	listenAddr := fmt.Sprintf("127.0.0.1:%d", *port)
-	if *port == 0 {
-		listenAddr = "127.0.0.1:0"
-	}
 
 	listener, err := net.Listen("tcp4", listenAddr)
 	if err != nil {

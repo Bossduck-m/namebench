@@ -42,25 +42,45 @@ var (
 	indexTmpl = loadTemplate("templates/index.html")
 
 	defaultDnsSecServers = []string{
+		"1.1.1.1:53",
 		"8.8.8.8:53",
-		"75.75.75.75:53",
-		"4.2.2.1:53",
+		"9.9.9.9:53",
 		"208.67.222.222:53",
 	}
 
 	globalResolverPool = []string{
-		"8.8.8.8:53",
-		"8.8.4.4:53",
+		// Cloudflare
 		"1.1.1.1:53",
 		"1.0.0.1:53",
+		"2606:4700:4700::1111",
+		"2606:4700:4700::1001",
+		// Google Public DNS
+		"8.8.8.8:53",
+		"8.8.4.4:53",
+		"2001:4860:4860::8888",
+		"2001:4860:4860::8844",
+		// Quad9
 		"9.9.9.9:53",
+		"149.112.112.112:53",
+		"2620:fe::fe",
+		"2620:fe::9",
+		// OpenDNS
 		"208.67.222.222:53",
+		"208.67.220.220:53",
+		"2620:119:35::35",
+		"2620:119:53::53",
+		// AdGuard
+		"94.140.14.14:53",
+		"94.140.15.15:53",
 	}
 
 	defaultRegionalResolverPool = []string{
 		"64.6.64.6:53",
 		"64.6.65.6:53",
 		"76.76.2.0:53",
+		"76.76.10.0:53",
+		"185.228.168.9:53",
+		"185.228.169.9:53",
 	}
 
 	regionalResolverPoolByLocation = map[string][]string{
@@ -69,15 +89,20 @@ var (
 			"64.6.65.6:53",
 			"76.76.2.0:53",
 			"76.76.10.0:53",
+			"149.112.112.10:53",
 		},
 		"eu": {
 			"185.228.168.9:53",
 			"185.228.169.9:53",
+			"193.110.81.0:53",
+			"185.253.5.0:53",
 			"9.9.9.11:53",
 		},
 		"tr": {
 			"9.9.9.10:53",
 			"149.112.112.10:53",
+			"94.140.14.14:53",
+			"94.140.15.15:53",
 			"1.1.1.2:53",
 		},
 	}
@@ -205,13 +230,16 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 	location := cfg.Location
 
 	rawNameservers := cfg.Nameservers
+	manualTokenCount := len(splitNameserverTokens(rawNameservers))
 	nameServers := parseNameServers(rawNameservers)
 	candidateServers := mergeNameServers(nameServers, includeGlobal, includeRegional, location)
 	warnings := make([]string, 0, 2)
 	if rawNameservers == "" {
 		warnings = append(warnings, "No manual nameserver provided, using default provider pools.")
+	} else if manualTokenCount > len(nameServers) {
+		warnings = append(warnings, fmt.Sprintf("%d manual nameserver entries were ignored (invalid or private/local IP).", manualTokenCount-len(nameServers)))
 	} else if len(nameServers) == 0 {
-		warnings = append(warnings, "Manual nameservers could not be parsed. Use one IPv4/IPv6 per line.")
+		warnings = append(warnings, "Manual nameservers could not be parsed. Use one public IPv4/IPv6 per line.")
 	}
 
 	records, err := history.Chrome(HISTORY_DAYS)
@@ -418,13 +446,11 @@ func parsePositiveInt(raw string, fallback int) int {
 }
 
 func parseNameServers(raw string) []string {
-	if raw == "" {
+	chunks := splitNameserverTokens(raw)
+	if len(chunks) == 0 {
 		return nil
 	}
 
-	chunks := strings.FieldsFunc(raw, func(r rune) bool {
-		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
-	})
 	servers := make([]string, 0, len(chunks))
 	seen := make(map[string]bool, len(chunks))
 
@@ -437,6 +463,15 @@ func parseNameServers(raw string) []string {
 		servers = append(servers, server)
 	}
 	return servers
+}
+
+func splitNameserverTokens(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	return strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ';' || r == '\n' || r == '\r' || r == '\t' || r == ' '
+	})
 }
 
 func mergeNameServers(manual []string, includeGlobal, includeRegional bool, location string) []string {
@@ -479,6 +514,9 @@ func normalizeNameServer(raw string) (string, bool) {
 
 	// bare IPv4/IPv6 address without explicit port
 	if ip := net.ParseIP(raw); ip != nil {
+		if !isAllowedResolverIP(ip) {
+			return "", false
+		}
 		return net.JoinHostPort(ip.String(), "53"), true
 	}
 
@@ -489,10 +527,30 @@ func normalizeNameServer(raw string) (string, bool) {
 	if err != nil || host == "" || port == "" {
 		return "", false
 	}
-	if net.ParseIP(host) == nil {
+	ip := net.ParseIP(host)
+	if ip == nil || !isAllowedResolverIP(ip) {
 		return "", false
 	}
-	return net.JoinHostPort(host, port), true
+	return net.JoinHostPort(ip.String(), port), true
+}
+
+func isAllowedResolverIP(ip net.IP) bool {
+	if ip == nil {
+		return false
+	}
+	if ip.IsLoopback() || ip.IsPrivate() || ip.IsUnspecified() || ip.IsMulticast() || ip.IsLinkLocalMulticast() || ip.IsLinkLocalUnicast() {
+		return false
+	}
+	if !ip.IsGlobalUnicast() {
+		return false
+	}
+	if ip4 := ip.To4(); ip4 != nil {
+		// Carrier-grade NAT range: 100.64.0.0/10
+		if ip4[0] == 100 && ip4[1] >= 64 && ip4[1] <= 127 {
+			return false
+		}
+	}
+	return true
 }
 
 func formEnabled(r *http.Request, key string) bool {

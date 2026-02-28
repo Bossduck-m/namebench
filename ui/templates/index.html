@@ -24,10 +24,12 @@
             <h2>Benchmark Setup</h2>
 
             <label for="nameservers">Nameservers</label>
-            <textarea id="nameservers" name="nameservers" rows="4">192.168.1.1
+            <textarea id="nameservers" name="nameservers" rows="5">1.1.1.1
 8.8.8.8
-1.1.1.1</textarea>
-            <p class="field-hint">Use IP list, one per line (port optional, default is 53).</p>
+9.9.9.9
+208.67.222.222
+94.140.14.14</textarea>
+            <p class="field-hint">Use public DNS IPs, one per line (port optional, default is 53). Private/local addresses are ignored.</p>
 
             <div class="toggles">
               <label class="toggle-row" for="include-global">

@@ -85,6 +85,8 @@ Quick DNSSEC uses the same server selection as the form:
 
 Disable both checkboxes to test only manually entered servers.
 
+Manual nameserver entries that are private/local (for example `192.168.x.x`, `10.x.x.x`, `127.0.0.1`) are ignored automatically.
+
 ## Notes
 
 - History sampling currently uses Chrome history.
@@ -94,5 +96,5 @@ Disable both checkboxes to test only manually entered servers.
 
 ## Release notes
 
-- See [RELEASE_NOTES_v0.2.4.md](RELEASE_NOTES_v0.2.4.md)
-- Previous: [RELEASE_NOTES_v0.2.3.md](RELEASE_NOTES_v0.2.3.md), [RELEASE_NOTES_v0.2.2.md](RELEASE_NOTES_v0.2.2.md), [RELEASE_NOTES_v0.2.1.md](RELEASE_NOTES_v0.2.1.md), [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)
+- See [RELEASE_NOTES_v0.2.5.md](RELEASE_NOTES_v0.2.5.md)
+- Previous: [RELEASE_NOTES_v0.2.4.md](RELEASE_NOTES_v0.2.4.md), [RELEASE_NOTES_v0.2.3.md](RELEASE_NOTES_v0.2.3.md), [RELEASE_NOTES_v0.2.2.md](RELEASE_NOTES_v0.2.2.md), [RELEASE_NOTES_v0.2.1.md](RELEASE_NOTES_v0.2.1.md), [RELEASE_NOTES_v0.2.0.md](RELEASE_NOTES_v0.2.0.md)

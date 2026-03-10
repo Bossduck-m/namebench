@@ -3,6 +3,7 @@
   var currentResult = null;
   var requestToken = "";
   var benchmarkRunning = false;
+  var keepAliveHandle = 0;
 
   function byId(id) {
     return document.getElementById(id);
@@ -591,6 +592,18 @@
     byId("dnssec-button").disabled = isRunning;
   }
 
+  async function pingServer() {
+    try {
+      await fetch("/ping", {
+        headers: authHeaders({
+          "Accept": "application/json"
+        })
+      });
+    } catch (error) {
+      // Ignore keepalive failures. They usually mean the app is already shutting down.
+    }
+  }
+
   async function pollBenchmark(jobId) {
     currentJobId = jobId;
 
@@ -757,13 +770,64 @@
     }
   }
 
+  async function shutdownApp() {
+    if (!window.confirm("Shut down the local namebench app now?")) {
+      return;
+    }
+
+    byId("shutdown-button").disabled = true;
+    currentJobId = "";
+    currentResult = null;
+    setExportButtons(false);
+    setBenchmarkButtons(false);
+    setStatus("running", "Shutting down");
+    setProgress(0, "Shutting down", "Server is stopping");
+    setLog("shutdown requested...");
+    if (keepAliveHandle) {
+      window.clearInterval(keepAliveHandle);
+      keepAliveHandle = 0;
+    }
+
+    try {
+      var response = await fetch("/shutdown", {
+        method: "POST",
+        headers: authHeaders({
+          "Accept": "application/json"
+        })
+      });
+      var raw = await response.text();
+      if (!response.ok) {
+        throw new Error(raw || ("HTTP " + response.status));
+      }
+      setStatus("ready", "App shut down requested");
+      setLog("shutdown requested. This page will stop responding when the local server exits.");
+      window.setTimeout(function () {
+        window.close();
+      }, 800);
+    } catch (error) {
+      byId("shutdown-button").disabled = false;
+      setStatus("error", "Shutdown failed");
+      setLog("error: " + error.message);
+      refreshBenchmarkEligibility();
+      keepAliveHandle = window.setInterval(pingServer, 60000);
+    }
+  }
+
   loadRequestToken();
   byId("benchmark-form").addEventListener("submit", runBenchmark);
   byId("cancel-button").addEventListener("click", cancelBenchmark);
   byId("dnssec-button").addEventListener("click", runDnssecCheck);
+  byId("shutdown-button").addEventListener("click", shutdownApp);
   byId("export-json-button").addEventListener("click", exportJson);
   byId("export-csv-button").addEventListener("click", exportCsv);
   byId("history-consent").addEventListener("change", refreshBenchmarkEligibility);
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) {
+      pingServer();
+    }
+  });
+  keepAliveHandle = window.setInterval(pingServer, 60000);
+  pingServer();
   setDiagnosticsSummary({ clean: 0, suspicious: 0, hijacked: 0, unknown: 0 });
   setExportButtons(false);
   refreshBenchmarkEligibility();

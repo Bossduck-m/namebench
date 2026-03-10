@@ -232,3 +232,48 @@ func TestValidateBenchmarkConfigRequiresHistoryConsent(t *testing.T) {
 		t.Fatalf("expected consented benchmark config to pass, got %v", err)
 	}
 }
+
+func TestShutdownHandlerInvokesCallback(t *testing.T) {
+	callbackCalled := make(chan struct{}, 1)
+	handler := RegisterHandlers(HandlerOptions{
+		OnShutdown: func() {
+			callbackCalled <- struct{}{}
+		},
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/shutdown", nil)
+	req.Header.Set("X-Namebench-Token", appRequestToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusAccepted {
+		t.Fatalf("expected status %d, got %d", http.StatusAccepted, rec.Code)
+	}
+
+	select {
+	case <-callbackCalled:
+	case <-time.After(time.Second):
+		t.Fatalf("expected shutdown callback to be invoked")
+	}
+}
+
+func TestHasRunningJobs(t *testing.T) {
+	runningJob := &benchmarkJob{ID: "running-job", status: "running"}
+	completedJob := &benchmarkJob{ID: "completed-job", status: "completed", finished: time.Now()}
+
+	benchmarkJobs.Store(runningJob.ID, runningJob)
+	benchmarkJobs.Store(completedJob.ID, completedJob)
+	defer benchmarkJobs.Delete(runningJob.ID)
+	defer benchmarkJobs.Delete(completedJob.ID)
+
+	if !HasRunningJobs() {
+		t.Fatalf("expected active benchmark jobs to be detected")
+	}
+
+	runningJob.status = "completed"
+	runningJob.finished = time.Now()
+	if HasRunningJobs() {
+		t.Fatalf("expected completed jobs to be ignored")
+	}
+}

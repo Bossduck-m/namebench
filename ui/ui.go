@@ -221,18 +221,33 @@ type indexTemplateData struct {
 	RequestToken string
 }
 
+type HandlerOptions struct {
+	OnShutdown func()
+}
+
+var shutdownCallback = func() {}
+
 // RegisterHandler registers all known handlers.
-func RegisterHandlers() {
+func RegisterHandlers(options HandlerOptions) http.Handler {
 	staticFS, err := fs.Sub(uiAssets, "static")
 	if err != nil {
 		panic(err)
 	}
-	http.HandleFunc("/", Index)
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
-	http.HandleFunc("/submit", Submit)
-	http.HandleFunc("/progress", Progress)
-	http.HandleFunc("/cancel", Cancel)
-	http.HandleFunc("/dnssec", DnsSec)
+	if options.OnShutdown != nil {
+		shutdownCallback = options.OnShutdown
+	} else {
+		shutdownCallback = func() {}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/", Index)
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	mux.HandleFunc("/submit", Submit)
+	mux.HandleFunc("/progress", Progress)
+	mux.HandleFunc("/cancel", Cancel)
+	mux.HandleFunc("/dnssec", DnsSec)
+	mux.HandleFunc("/ping", Ping)
+	mux.HandleFunc("/shutdown", Shutdown)
+	return mux
 }
 
 // loadTemplate loads a set of templates.
@@ -334,6 +349,29 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 
 	job := startBenchmarkJob(cfg)
 	writeJSON(w, http.StatusAccepted, job.snapshot())
+}
+
+func Ping(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !validateRequestToken(w, r) {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func Shutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !validateRequestToken(w, r) {
+		return
+	}
+	go shutdownCallback()
+	writeJSON(w, http.StatusAccepted, map[string]string{"status": "shutting_down"})
 }
 
 func benchmarkAllServers(servers []string, hostnames []string) []serverBenchmark {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/google/namebench/ui"
 )
@@ -20,6 +22,7 @@ var port = flag.Int("port", 8100, "Port to listen on")
 var openBrowserFlag = flag.Bool("open_browser", true, "Open the default browser automatically")
 var debugFlag = flag.Bool("debug", false, "Enable verbose logging to stdout")
 var logFileFlag = flag.String("log_file", "namebench.log", "Path to the application log file")
+var idleTimeoutFlag = flag.Duration("idle_timeout", 15*time.Minute, "How long the local UI can stay idle before it shuts down automatically (0 disables auto-shutdown)")
 
 // openBrowser opens the system default browser at the given URL.
 func openBrowser(url string) error {
@@ -72,7 +75,21 @@ func configureLogging() {
 func main() {
 	flag.Parse()
 	configureLogging()
-	ui.RegisterHandlers()
+
+	instanceGuard, existingState, err := acquireInstanceGuard()
+	if err != nil {
+		if existingState != nil && existingState.URL != "" {
+			log.Printf("another namebench instance is already running at %s", existingState.URL)
+			if *openBrowserFlag {
+				if openErr := openBrowser(existingState.URL); openErr != nil {
+					log.Printf("failed to open running instance URL: %v", openErr)
+				}
+			}
+			return
+		}
+		log.Fatalf("failed to acquire single-instance lock: %v", err)
+	}
+	defer instanceGuard.Release()
 
 	listenAddr := fmt.Sprintf("127.0.0.1:%d", *port)
 
@@ -82,7 +99,27 @@ func main() {
 	}
 
 	url := fmt.Sprintf("http://%s/", listener.Addr().String())
+	if err := instanceGuard.WriteState(instanceState{
+		PID:       os.Getpid(),
+		URL:       url,
+		CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		log.Printf("failed to persist running instance metadata: %v", err)
+	}
 	log.Printf("namebench is listening at %s", url)
+
+	runtimeState := newAppRuntime(*idleTimeoutFlag)
+	handler := runtimeState.wrapHandler(ui.RegisterHandlers(ui.HandlerOptions{
+		OnShutdown: func() {
+			runtimeState.requestShutdown("requested by UI")
+		},
+	}))
+	server := &http.Server{Handler: handler}
+	runtimeState.attachServer(server)
+
+	monitorCtx, cancelMonitor := context.WithCancel(context.Background())
+	defer cancelMonitor()
+	go runtimeState.monitorIdle(monitorCtx)
 
 	if *openBrowserFlag {
 		go func() {
@@ -93,7 +130,8 @@ func main() {
 		}()
 	}
 
-	if err := http.Serve(listener, nil); err != nil {
+	if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("HTTP server error: %v", err)
 	}
+	runtimeState.waitForShutdown()
 }

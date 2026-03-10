@@ -373,6 +373,32 @@ func lookupBenchmarkJob(jobID string) (*benchmarkJob, bool) {
 	return job, ok
 }
 
+func HasRunningJobs() bool {
+	hasRunning := false
+	benchmarkJobs.Range(func(_, value interface{}) bool {
+		job, ok := value.(*benchmarkJob)
+		if !ok {
+			return true
+		}
+		if job.isActive() {
+			hasRunning = true
+			return false
+		}
+		return true
+	})
+	return hasRunning
+}
+
+func CancelAllBenchmarkJobs() {
+	benchmarkJobs.Range(func(_, value interface{}) bool {
+		job, ok := value.(*benchmarkJob)
+		if ok {
+			job.cancel()
+		}
+		return true
+	})
+}
+
 func parseJobID(r *http.Request) string {
 	if jobID := strings.TrimSpace(r.URL.Query().Get("job_id")); jobID != "" {
 		return jobID
@@ -415,4 +441,10 @@ func (j *benchmarkJob) isExpired(now time.Time) bool {
 		return false
 	}
 	return now.Sub(j.finished) > benchmarkJobRetention
+}
+
+func (j *benchmarkJob) isActive() bool {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.status == "queued" || j.status == "running"
 }

@@ -6,9 +6,10 @@
     <meta name="description" content="namebench modern UI">
     <meta name="author" content="namebench">
     <meta name="namebench-request-token" content="{{.RequestToken}}">
+    <meta name="namebench-base-path" content="{{.BasePath}}">
 
     <title>namebench</title>
-    <link href="/static/index.css" rel="stylesheet">
+    <link href="{{.BasePath}}static/index.css" rel="stylesheet">
   </head>
 
   <body>
@@ -20,12 +21,22 @@
           <p class="subtext">Configure providers, run against sampled browser history, and compare results with ranked metrics and visual charts.</p>
         </header>
 
-        <section class="layout-grid">
-          <form id="benchmark-form" class="config-card" action="/submit" method="post">
+        <section id="layout-grid" class="layout-grid">
+          <form id="benchmark-form" class="config-card" action="{{.BasePath}}submit" method="post">
             <h2>Benchmark Setup</h2>
 
-            <label for="nameservers">Nameservers</label>
-            <textarea id="nameservers" name="nameservers" rows="10">1.1.1.1
+            <section class="config-section">
+              <div class="section-head">
+                <h3>Nameservers</h3>
+                <p class="section-copy">Seed the benchmark with public DNS resolvers. One IP per line.</p>
+              </div>
+              <label for="nameservers">Nameservers</label>
+              <div class="nameserver-shell">
+                <div class="nameserver-meta">
+                  <span class="nameserver-meta-label">Manual Resolver List</span>
+                  <span id="nameserver-count" class="nameserver-count">0 entries</span>
+                </div>
+                <textarea id="nameservers" class="nameserver-input" name="nameservers" rows="10">1.1.1.1
 1.0.0.1
 8.8.8.8
 8.8.4.4
@@ -36,65 +47,81 @@
 94.140.14.14
 94.140.15.15
 76.76.2.0</textarea>
-            <p class="field-hint">Use public DNS IPs, one per line (port optional, default is 53). Private/local addresses are ignored. System resolvers can also be discovered automatically.</p>
-
-            <div class="toggles">
-              <label class="toggle-row" for="include-system">
-                <input id="include-system" type="checkbox" name="include_system" checked>
-                <span>Include DNS resolvers configured on this machine</span>
-              </label>
-              <label class="toggle-row" for="include-metadata">
-                <input id="include-metadata" type="checkbox" name="include_metadata">
-                <span>Resolve ASN / country labels using third-party metadata services</span>
-              </label>
-              <label class="toggle-row" for="include-global">
-                <input id="include-global" type="checkbox" name="include_global" checked>
-                <span>Include global DNS providers (Google, OpenDNS, Cloudflare, Quad9, Verisign, DNS.WATCH)</span>
-              </label>
-              <label class="toggle-row" for="include-regional">
-                <input id="include-regional" type="checkbox" name="include_regional" checked>
-                <span>Include best available regional DNS services</span>
-              </label>
-            </div>
-
-            <div class="field-grid">
-              <div class="field">
-                <label for="location">Your location</label>
-                <select id="location" name="location">
-                  <option value="auto">Auto detect</option>
-                  <option value="none" selected>None</option>
-                  <option value="us">United States</option>
-                  <option value="tr">Turkey</option>
-                  <option value="eu">Europe</option>
-                </select>
               </div>
-              <div class="field">
-                <label for="data-source">Query data source</label>
-                <select id="data-source" name="data_source">
-                  <option value="chrome" selected>Chromium Browsers</option>
-                </select>
-                <p class="field-hint">Uses Chrome, Edge, and Brave browser history profiles when available.</p>
-              </div>
-              <div class="field">
-                <label for="query-count">Number of queries</label>
-                <input id="query-count" name="query_count" type="number" min="10" max="2000" value="250">
-              </div>
-            </div>
+              <p class="field-hint">Use public DNS IPs, one per line (port optional, default is 53). Private/local addresses are ignored. System resolvers can also be discovered automatically.</p>
+            </section>
 
-            <label class="toggle-row consent-row" for="history-consent">
-              <input id="history-consent" type="checkbox" name="history_consent">
-              <span>I allow namebench to read sampled Chromium history and send those domain lookups to the selected DNS resolvers.</span>
-            </label>
-            <p class="field-hint">Benchmark uses recent Chromium browsing history when available. Without this consent, Start Benchmark stays blocked.</p>
+            <section class="config-section">
+              <div class="section-head">
+                <h3>Resolver Sources</h3>
+                <p class="section-copy">Blend your manual list with detected system DNS and curated public pools.</p>
+              </div>
+              <div class="toggles">
+                <label class="toggle-row" for="include-system">
+                  <input id="include-system" type="checkbox" name="include_system" checked>
+                  <span>Include DNS resolvers configured on this machine</span>
+                </label>
+                <label class="toggle-row" for="include-metadata">
+                  <input id="include-metadata" type="checkbox" name="include_metadata">
+                  <span>Resolve ASN / country labels using third-party metadata services</span>
+                </label>
+                <label class="toggle-row" for="include-global">
+                  <input id="include-global" type="checkbox" name="include_global" checked>
+                  <span>Include global DNS providers (Google, OpenDNS, Cloudflare, Quad9, Verisign, DNS.WATCH)</span>
+                </label>
+                <label class="toggle-row" for="include-regional">
+                  <input id="include-regional" type="checkbox" name="include_regional" checked>
+                  <span>Include best available regional DNS services</span>
+                </label>
+              </div>
+            </section>
 
-            <div class="actions">
-              <button id="start-button" class="btn btn-primary" type="submit">Start Benchmark</button>
-              <button id="cancel-button" class="btn btn-muted" type="button" disabled>Cancel Run</button>
-              <button id="dnssec-button" class="btn btn-muted" type="button">Quick DNSSEC Check (Selected Servers)</button>
-              <button id="shutdown-button" class="btn btn-muted" type="button">Shut Down App</button>
-            </div>
-            <p class="field-hint">The local server stays alive while this page is open and will shut down automatically after an idle period.</p>
+            <section class="config-section">
+              <div class="section-head">
+                <h3>Benchmark Profile</h3>
+                <p class="section-copy">Choose region, data source, sample size, and start the run.</p>
+              </div>
+              <div class="field-grid">
+                <div class="field">
+                  <label for="location">Your location</label>
+                  <select id="location" name="location">
+                    <option value="auto">Auto detect</option>
+                    <option value="none" selected>None</option>
+                    <option value="us">United States</option>
+                    <option value="tr">Turkey</option>
+                    <option value="eu">Europe</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="data-source">Query data source</label>
+                  <select id="data-source" name="data_source">
+                    <option value="chrome" selected>Chromium Browsers</option>
+                  </select>
+                  <p class="field-hint">Uses Chrome, Edge, and Brave browser history profiles when available.</p>
+                </div>
+                <div class="field field-span-2">
+                  <label for="query-count">Number of queries</label>
+                  <input id="query-count" name="query_count" type="number" min="10" max="2000" value="250">
+                </div>
+              </div>
+
+              <label class="toggle-row consent-row" for="history-consent">
+                <input id="history-consent" type="checkbox" name="history_consent">
+                <span>I allow namebench to read sampled Chromium history and send those domain lookups to the selected DNS resolvers.</span>
+              </label>
+              <p class="field-hint">Benchmark uses recent Chromium browsing history when available. Without this consent, Start Benchmark stays blocked.</p>
+
+              <div class="actions">
+                <button id="start-button" class="btn btn-primary" type="submit">Start Benchmark</button>
+                <button id="cancel-button" class="btn btn-muted" type="button" disabled>Cancel Run</button>
+                <button id="dnssec-button" class="btn btn-muted" type="button">Quick DNSSEC Check (Selected Servers)</button>
+                <button id="shutdown-button" class="btn btn-muted" type="button">Shut Down App</button>
+              </div>
+              <p class="field-hint">The local server stays alive while this page is open and will shut down automatically after an idle period.</p>
+            </section>
           </form>
+
+          <div id="layout-divider" class="layout-divider" role="separator" aria-orientation="vertical" aria-label="Resize layout" tabindex="0"></div>
 
           <aside class="status-card">
             <h2>Live Status</h2>
@@ -128,9 +155,6 @@
               </div>
               <p id="progress-detail" class="progress-detail">0 / 0 queries</p>
             </div>
-
-            <p class="field-caption">Result log</p>
-            <pre id="result-log" class="result-log">namebench is ready.</pre>
           </aside>
         </section>
 
@@ -142,6 +166,29 @@
               <button id="export-json-button" class="btn btn-muted" type="button" disabled>Export JSON</button>
               <button id="export-csv-button" class="btn btn-muted" type="button" disabled>Export CSV</button>
             </div>
+          </div>
+
+          <div class="summary-grid">
+            <article class="summary-card">
+              <p class="summary-label">Recommended</p>
+              <p id="summary-winner" class="summary-value">-</p>
+              <p id="summary-winner-detail" class="summary-detail">Best overall score</p>
+            </article>
+            <article class="summary-card">
+              <p class="summary-label">Fastest Cold</p>
+              <p id="summary-cold" class="summary-value">-</p>
+              <p id="summary-cold-detail" class="summary-detail">Lowest uncached average</p>
+            </article>
+            <article class="summary-card">
+              <p class="summary-label">Fastest Warm</p>
+              <p id="summary-warm" class="summary-value">-</p>
+              <p id="summary-warm-detail" class="summary-detail">Lowest cached average</p>
+            </article>
+            <article class="summary-card">
+              <p class="summary-label">Most Stable</p>
+              <p id="summary-stable" class="summary-value">-</p>
+              <p id="summary-stable-detail" class="summary-detail">Lowest failure rate and jitter</p>
+            </article>
           </div>
 
           <div class="table-wrap">
@@ -211,10 +258,20 @@
             </div>
             <div id="diagnostics-list" class="diagnostics-list empty-state">Run benchmark to render diagnostics.</div>
           </section>
+
+          <section class="log-card">
+            <button id="log-toggle" class="log-toggle" type="button" aria-expanded="false" aria-controls="result-log-panel">
+              <span>Result Log</span>
+              <span id="log-toggle-label" class="log-toggle-label">Show</span>
+            </button>
+            <div id="result-log-panel" class="log-panel" hidden>
+              <pre id="result-log" class="result-log">namebench is ready.</pre>
+            </div>
+          </section>
         </section>
       </section>
     </main>
 
-    <script src="/static/index.js"></script>
+    <script src="{{.BasePath}}static/index.js"></script>
   </body>
 </html>

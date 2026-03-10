@@ -78,3 +78,48 @@ func TestAppRuntimeIdleShutdown(t *testing.T) {
 
 	runtimeState.waitForShutdown()
 }
+
+func TestAppRuntimeShutsDownAfterLastSessionCloses(t *testing.T) {
+	minIdleCheckInterval = 5 * time.Millisecond
+	maxIdleCheckInterval = 5 * time.Millisecond
+	t.Cleanup(func() {
+		minIdleCheckInterval = 15 * time.Second
+		maxIdleCheckInterval = time.Minute
+	})
+
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("Listen() error = %v", err)
+	}
+
+	runtimeState := newAppRuntime(time.Minute)
+	server := &http.Server{
+		Handler: runtimeState.wrapHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		})),
+	}
+	runtimeState.attachServer(server)
+	runtimeState.sessionOpened("ui-session")
+	runtimeState.sessionClosed("ui-session")
+	runtimeState.noSessionSince = time.Now().Add(-uiSessionGracePeriod - time.Second)
+
+	serveDone := make(chan error, 1)
+	go func() {
+		serveDone <- server.Serve(listener)
+	}()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runtimeState.monitorIdle(ctx)
+
+	select {
+	case serveErr := <-serveDone:
+		if serveErr != nil && serveErr != http.ErrServerClosed {
+			t.Fatalf("Serve() error = %v", serveErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatalf("expected runtime to shut down after last UI session closed")
+	}
+
+	runtimeState.waitForShutdown()
+}

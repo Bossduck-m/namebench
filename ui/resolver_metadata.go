@@ -261,7 +261,7 @@ func fetchJSON[T any](ctx context.Context, url string) (T, error) {
 		return payload, err
 	}
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "namebench/0.3 resolver-metadata")
+	req.Header.Set("User-Agent", "namebench/0.2.5 resolver-metadata")
 
 	resp, err := resolverMetadataClient.Do(req)
 	if err != nil {

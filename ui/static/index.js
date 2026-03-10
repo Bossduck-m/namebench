@@ -2,26 +2,99 @@
   var currentJobId = "";
   var currentResult = null;
   var requestToken = "";
+  var basePath = "/";
   var benchmarkRunning = false;
   var keepAliveHandle = 0;
+  var layoutDragCleanup = null;
+  var sessionId = "";
 
   function byId(id) {
     return document.getElementById(id);
+  }
+
+  function rootStyle() {
+    return document.documentElement.style;
   }
 
   function nowLabel() {
     return new Date().toLocaleTimeString();
   }
 
+  function createSessionId() {
+    if (window.crypto && window.crypto.randomUUID) {
+      return window.crypto.randomUUID();
+    }
+    return "session-" + Date.now() + "-" + Math.random().toString(16).slice(2);
+  }
+
   function loadRequestToken() {
     var tag = document.querySelector('meta[name="namebench-request-token"]');
     requestToken = tag ? tag.getAttribute("content") || "" : "";
+    var basePathTag = document.querySelector('meta[name="namebench-base-path"]');
+    basePath = normalizeBasePath(basePathTag ? basePathTag.getAttribute("content") || "/" : "/");
   }
 
   function authHeaders(extra) {
     var headers = Object.assign({}, extra || {});
     headers["X-Namebench-Token"] = requestToken;
     return headers;
+  }
+
+  function normalizeBasePath(path) {
+    var value = String(path || "/").trim();
+    if (!value) {
+      return "/";
+    }
+    if (value.charAt(0) !== "/") {
+      value = "/" + value;
+    }
+    if (value.charAt(value.length - 1) !== "/") {
+      value += "/";
+    }
+    return value;
+  }
+
+  function apiPath(path) {
+    var value = String(path || "");
+    while (value.charAt(0) === "/") {
+      value = value.slice(1);
+    }
+    return basePath + value;
+  }
+
+  async function openSession() {
+    sessionId = createSessionId();
+    try {
+      await fetch(apiPath("session/open"), {
+        method: "POST",
+        credentials: "same-origin",
+        headers: authHeaders({
+          "Content-Type": "application/json; charset=UTF-8"
+        }),
+        body: JSON.stringify({ session_id: sessionId })
+      });
+    } catch (error) {
+      // Ignore session-open failure. Server idle fallback still exists.
+    }
+  }
+
+  function closeSession() {
+    if (!sessionId) {
+      return;
+    }
+    try {
+      fetch(apiPath("session/close"), {
+        method: "POST",
+        keepalive: true,
+        credentials: "same-origin",
+        headers: authHeaders({
+          "Content-Type": "application/json; charset=UTF-8"
+        }),
+        body: JSON.stringify({ session_id: sessionId })
+      });
+    } catch (error) {
+      // Ignore close errors during page unload.
+    }
   }
 
   function setStatus(state, text) {
@@ -79,9 +152,130 @@
     return server.replace(/:53$/, "");
   }
 
+  function updateNameserverCount() {
+    var raw = byId("nameservers").value || "";
+    var count = raw
+      .split(/[\n,;\t ]+/)
+      .map(function (part) {
+        return part.trim();
+      })
+      .filter(Boolean).length;
+    byId("nameserver-count").textContent = count + (count === 1 ? " entry" : " entries");
+  }
+
   function setLog(text) {
     byId("result-log").textContent = text;
     byId("metric-updated").textContent = nowLabel();
+  }
+
+  function clamp(value, min, max) {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  function setSetupWidth(width) {
+    var layout = byId("layout-grid");
+    if (!layout) {
+      return;
+    }
+    var bounds = layout.getBoundingClientRect();
+    var dividerWidth = 18;
+    var minWidth = 440;
+    var maxWidth = Math.max(minWidth, Math.min(820, bounds.width - dividerWidth - 420));
+    var nextWidth = clamp(width, minWidth, maxWidth);
+    rootStyle().setProperty("--setup-width", nextWidth + "px");
+    try {
+      window.localStorage.setItem("namebench-setup-width", String(nextWidth));
+    } catch (error) {
+      // Ignore storage failures.
+    }
+  }
+
+  function applySavedSetupWidth() {
+    var stored = "";
+    try {
+      stored = window.localStorage.getItem("namebench-setup-width") || "";
+    } catch (error) {
+      stored = "";
+    }
+    if (!stored) {
+      return;
+    }
+    var width = Number(stored);
+    if (Number.isFinite(width) && width > 0) {
+      setSetupWidth(width);
+    }
+  }
+
+  function bindLayoutResizer() {
+    var layout = byId("layout-grid");
+    var divider = byId("layout-divider");
+    if (!layout || !divider || window.matchMedia("(max-width: 1100px)").matches) {
+      return;
+    }
+
+    divider.addEventListener("pointerdown", function (event) {
+      event.preventDefault();
+      divider.classList.add("is-dragging");
+      var pointerId = event.pointerId;
+      divider.setPointerCapture(pointerId);
+
+      function move(clientX) {
+        var bounds = layout.getBoundingClientRect();
+        setSetupWidth(clientX - bounds.left);
+      }
+
+      function onPointerMove(moveEvent) {
+        move(moveEvent.clientX);
+      }
+
+      function stop() {
+        divider.classList.remove("is-dragging");
+        divider.releasePointerCapture(pointerId);
+        divider.removeEventListener("pointermove", onPointerMove);
+        divider.removeEventListener("pointerup", stop);
+        divider.removeEventListener("pointercancel", stop);
+      }
+
+      divider.addEventListener("pointermove", onPointerMove);
+      divider.addEventListener("pointerup", stop);
+      divider.addEventListener("pointercancel", stop);
+    });
+
+    divider.addEventListener("keydown", function (event) {
+      var step = event.shiftKey ? 40 : 20;
+      var current = Number(getComputedStyle(document.documentElement).getPropertyValue("--setup-width").replace("px", "")) || 620;
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setSetupWidth(current - step);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setSetupWidth(current + step);
+      }
+    });
+
+    function onResize() {
+      var current = Number(getComputedStyle(document.documentElement).getPropertyValue("--setup-width").replace("px", "")) || 620;
+      setSetupWidth(current);
+    }
+
+    window.addEventListener("resize", onResize);
+    layoutDragCleanup = function () {
+      window.removeEventListener("resize", onResize);
+    };
+  }
+
+  function setLogExpanded(expanded) {
+    var panel = byId("result-log-panel");
+    var toggle = byId("log-toggle");
+    var label = byId("log-toggle-label");
+    panel.hidden = !expanded;
+    toggle.setAttribute("aria-expanded", expanded ? "true" : "false");
+    label.textContent = expanded ? "Hide" : "Show";
+  }
+
+  function toggleLogPanel() {
+    var expanded = byId("log-toggle").getAttribute("aria-expanded") === "true";
+    setLogExpanded(!expanded);
   }
 
   function parseJsonSafe(text) {
@@ -101,6 +295,85 @@
     byId("metric-server").textContent = shortServer(data.winner || "-");
     byId("metric-queries").textContent = String(asNumber(data.executed_queries, 0));
     byId("metric-failures").textContent = String(totalFailures);
+  }
+
+  function bestResult(results, selector) {
+    if (!results || results.length === 0) {
+      return null;
+    }
+    return results.slice().sort(function (left, right) {
+      var delta = selector(left) - selector(right);
+      if (delta !== 0) {
+        return delta;
+      }
+      return (left.server || "").localeCompare(right.server || "");
+    })[0];
+  }
+
+  function setSummaryCard(valueId, detailId, value, detail) {
+    byId(valueId).textContent = value || "-";
+    byId(detailId).textContent = detail || "-";
+  }
+
+  function resetSummaryCards() {
+    setSummaryCard("summary-winner", "summary-winner-detail", "-", "Best overall score");
+    setSummaryCard("summary-cold", "summary-cold-detail", "-", "Lowest uncached average");
+    setSummaryCard("summary-warm", "summary-warm-detail", "-", "Lowest cached average");
+    setSummaryCard("summary-stable", "summary-stable-detail", "-", "Lowest failure rate and jitter");
+  }
+
+  function updateSummaryCards(data) {
+    var results = Array.isArray(data.results) ? data.results : [];
+    if (results.length === 0) {
+      resetSummaryCards();
+      return;
+    }
+
+    var winnerResult = results.find(function (result) {
+      return result.server === data.winner;
+    }) || results[0];
+    var coldResult = bestResult(results, function (result) {
+      return asNumber(result.uncached_avg_ms, 0);
+    });
+    var warmResult = bestResult(results, function (result) {
+      return asNumber(result.cached_avg_ms, 0);
+    });
+    var stableResult = results.slice().sort(function (left, right) {
+      var failDelta = asNumber(left.failure_rate, 0) - asNumber(right.failure_rate, 0);
+      if (failDelta !== 0) {
+        return failDelta;
+      }
+      var jitterDelta = asNumber(left.jitter_ms, 0) - asNumber(right.jitter_ms, 0);
+      if (jitterDelta !== 0) {
+        return jitterDelta;
+      }
+      return (left.server || "").localeCompare(right.server || "");
+    })[0];
+
+    setSummaryCard(
+      "summary-winner",
+      "summary-winner-detail",
+      shortServer(winnerResult.server),
+      "score " + formatMs(winnerResult.score) + " • integrity " + (winnerResult.integrity || "unknown")
+    );
+    setSummaryCard(
+      "summary-cold",
+      "summary-cold-detail",
+      shortServer(coldResult.server),
+      formatMs(coldResult.uncached_avg_ms) + " ms uncached"
+    );
+    setSummaryCard(
+      "summary-warm",
+      "summary-warm-detail",
+      shortServer(warmResult.server),
+      formatMs(warmResult.cached_avg_ms) + " ms cached"
+    );
+    setSummaryCard(
+      "summary-stable",
+      "summary-stable-detail",
+      shortServer(stableResult.server),
+      formatPct01(stableResult.failure_rate) + " fail • " + formatMs(stableResult.jitter_ms) + " ms jitter"
+    );
   }
 
   function updateWinnerBanner(data) {
@@ -594,7 +867,9 @@
 
   async function pingServer() {
     try {
-      await fetch("/ping", {
+      var url = apiPath("ping") + (sessionId ? ("?session_id=" + encodeURIComponent(sessionId)) : "");
+      await fetch(url, {
+        credentials: "same-origin",
         headers: authHeaders({
           "Accept": "application/json"
         })
@@ -608,7 +883,8 @@
     currentJobId = jobId;
 
     while (currentJobId === jobId) {
-      var response = await fetch("/progress?job_id=" + encodeURIComponent(jobId), {
+      var response = await fetch(apiPath("progress") + "?job_id=" + encodeURIComponent(jobId), {
+        credentials: "same-origin",
         headers: {
           "Accept": "application/json",
           "X-Namebench-Token": requestToken
@@ -637,11 +913,13 @@
         currentResult = state.result;
         setExportButtons(true);
         updateMetrics(state.result);
+        updateSummaryCards(state.result);
         updateWinnerBanner(state.result);
         renderResultsTable(state.result);
         renderDiagnostics(state.result);
         renderCharts(state.result);
         setLog(buildLogText(state.result));
+        setLogExpanded(false);
         setStatus("ready", "Benchmark completed");
         currentJobId = "";
         return;
@@ -649,14 +927,18 @@
 
       if (state.status === "canceled") {
         setStatus("error", "Benchmark canceled");
+        resetSummaryCards();
         setLog(buildProgressText(state));
+        setLogExpanded(true);
         currentJobId = "";
         return;
       }
 
       if (state.status === "error") {
         setStatus("error", "Benchmark failed");
+        resetSummaryCards();
         setLog("error: " + (state.error || "unknown"));
+        setLogExpanded(true);
         currentJobId = "";
         return;
       }
@@ -674,6 +956,7 @@
     var form = byId("benchmark-form");
     currentResult = null;
     setExportButtons(false);
+    resetSummaryCards();
     setBenchmarkButtons(true);
     setProgress(0, "Starting benchmark", "0 / 0 queries");
     setStatus("running", "Benchmark running");
@@ -681,10 +964,12 @@
     byId("diagnostics-list").classList.add("empty-state");
     byId("diagnostics-list").textContent = "Benchmark running. Diagnostics will appear when integrity probes finish.";
     setLog("benchmark started...");
+    setLogExpanded(false);
 
     try {
       var response = await fetch(form.action, {
         method: "POST",
+        credentials: "same-origin",
         headers: authHeaders({
           "Accept": "application/json",
           "Content-Type": "application/json; charset=UTF-8"
@@ -709,7 +994,9 @@
     } catch (error) {
       currentResult = null;
       setStatus("error", "Benchmark failed");
+      resetSummaryCards();
       setLog("error: " + error.message);
+      setLogExpanded(true);
     } finally {
       setBenchmarkButtons(false);
       if (!currentJobId) {
@@ -724,8 +1011,9 @@
     }
 
     try {
-      await fetch("/cancel", {
+      await fetch(apiPath("cancel"), {
         method: "POST",
+        credentials: "same-origin",
         headers: authHeaders({
           "Content-Type": "application/json; charset=UTF-8"
         }),
@@ -735,10 +1023,12 @@
       currentJobId = "";
       currentResult = null;
       setExportButtons(false);
+      resetSummaryCards();
       setBenchmarkButtons(false);
       setStatus("error", "Benchmark canceled");
       setProgress(0, "Canceled", "0 / 0 queries");
       setLog("benchmark canceled.");
+      setLogExpanded(true);
     }
   }
 
@@ -749,8 +1039,9 @@
     setLog("dnssec check started...");
 
     try {
-      var response = await fetch("/dnssec", {
+      var response = await fetch(apiPath("dnssec"), {
         method: "POST",
+        credentials: "same-origin",
         headers: authHeaders({
           "Content-Type": "application/json; charset=UTF-8"
         }),
@@ -761,10 +1052,12 @@
         throw new Error(raw || ("HTTP " + response.status));
       }
       setLog(raw);
+      setLogExpanded(true);
       setStatus("ready", "DNSSEC checks completed");
     } catch (error) {
       setStatus("error", "DNSSEC check failed");
       setLog("error: " + error.message);
+      setLogExpanded(true);
     } finally {
       button.disabled = false;
     }
@@ -789,8 +1082,9 @@
     }
 
     try {
-      var response = await fetch("/shutdown", {
+      var response = await fetch(apiPath("shutdown"), {
         method: "POST",
+        credentials: "same-origin",
         headers: authHeaders({
           "Accept": "application/json"
         })
@@ -808,8 +1102,9 @@
       byId("shutdown-button").disabled = false;
       setStatus("error", "Shutdown failed");
       setLog("error: " + error.message);
+      setLogExpanded(true);
       refreshBenchmarkEligibility();
-      keepAliveHandle = window.setInterval(pingServer, 60000);
+      keepAliveHandle = window.setInterval(pingServer, 30000);
     }
   }
 
@@ -818,18 +1113,29 @@
   byId("cancel-button").addEventListener("click", cancelBenchmark);
   byId("dnssec-button").addEventListener("click", runDnssecCheck);
   byId("shutdown-button").addEventListener("click", shutdownApp);
+  byId("log-toggle").addEventListener("click", toggleLogPanel);
   byId("export-json-button").addEventListener("click", exportJson);
   byId("export-csv-button").addEventListener("click", exportCsv);
   byId("history-consent").addEventListener("change", refreshBenchmarkEligibility);
+  byId("nameservers").addEventListener("input", updateNameserverCount);
+  window.addEventListener("pagehide", closeSession);
+  window.addEventListener("beforeunload", closeSession);
   document.addEventListener("visibilitychange", function () {
     if (!document.hidden) {
       pingServer();
     }
   });
-  keepAliveHandle = window.setInterval(pingServer, 60000);
-  pingServer();
+  keepAliveHandle = window.setInterval(pingServer, 30000);
+  openSession().finally(function () {
+    pingServer();
+  });
+  applySavedSetupWidth();
+  bindLayoutResizer();
   setDiagnosticsSummary({ clean: 0, suspicious: 0, hijacked: 0, unknown: 0 });
   setExportButtons(false);
+  setLogExpanded(false);
+  resetSummaryCards();
+  updateNameserverCount();
   refreshBenchmarkEligibility();
   setProgress(0, "Idle", "0 / 0 queries");
 })();

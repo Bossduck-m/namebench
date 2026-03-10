@@ -219,13 +219,24 @@ type benchmarkProgressCallback func(server, phase string, delta int)
 
 type indexTemplateData struct {
 	RequestToken string
+	BasePath     string
 }
 
 type HandlerOptions struct {
-	OnShutdown func()
+	BasePath       string
+	OnShutdown     func()
+	OnSessionOpen  func(string)
+	OnSessionClose func(string)
+	OnSessionPing  func(string)
 }
 
-var shutdownCallback = func() {}
+var (
+	shutdownCallback     = func() {}
+	sessionOpenCallback  = func(string) {}
+	sessionCloseCallback = func(string) {}
+	sessionPingCallback  = func(string) {}
+	appBasePath          = "/"
+)
 
 // RegisterHandler registers all known handlers.
 func RegisterHandlers(options HandlerOptions) http.Handler {
@@ -233,10 +244,26 @@ func RegisterHandlers(options HandlerOptions) http.Handler {
 	if err != nil {
 		panic(err)
 	}
+	appBasePath = normalizeBasePath(options.BasePath)
 	if options.OnShutdown != nil {
 		shutdownCallback = options.OnShutdown
 	} else {
 		shutdownCallback = func() {}
+	}
+	if options.OnSessionOpen != nil {
+		sessionOpenCallback = options.OnSessionOpen
+	} else {
+		sessionOpenCallback = func(string) {}
+	}
+	if options.OnSessionClose != nil {
+		sessionCloseCallback = options.OnSessionClose
+	} else {
+		sessionCloseCallback = func(string) {}
+	}
+	if options.OnSessionPing != nil {
+		sessionPingCallback = options.OnSessionPing
+	} else {
+		sessionPingCallback = func(string) {}
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", Index)
@@ -246,6 +273,8 @@ func RegisterHandlers(options HandlerOptions) http.Handler {
 	mux.HandleFunc("/cancel", Cancel)
 	mux.HandleFunc("/dnssec", DnsSec)
 	mux.HandleFunc("/ping", Ping)
+	mux.HandleFunc("/session/open", SessionOpen)
+	mux.HandleFunc("/session/close", SessionClose)
 	mux.HandleFunc("/shutdown", Shutdown)
 	return mux
 }
@@ -262,7 +291,10 @@ func loadTemplate(paths ...string) *template.Template {
 
 // Index handles /
 func Index(w http.ResponseWriter, r *http.Request) {
-	data := indexTemplateData{RequestToken: appRequestToken}
+	data := indexTemplateData{
+		RequestToken: appRequestToken,
+		BasePath:     appBasePath,
+	}
 	if err := indexTmpl.ExecuteTemplate(w, "index.html", data); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
@@ -270,11 +302,11 @@ func Index(w http.ResponseWriter, r *http.Request) {
 
 // DnsSec handles /dnssec
 func DnsSec(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost && r.Method != http.MethodGet {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if r.Method == http.MethodPost && !validateRequestToken(w, r) {
+	if !validateRequestToken(w, r) {
 		return
 	}
 
@@ -295,12 +327,7 @@ func DnsSec(w http.ResponseWriter, r *http.Request) {
 	includeRegional := cfg.IncludeRegional
 	location := cfg.Location
 
-	servers := []string{}
-	if r.Method == http.MethodPost {
-		servers = mergeNameServers(nameServers, systemServers, includeGlobal, includeRegional, location)
-	} else {
-		servers = defaultDnsSecServers
-	}
+	servers := mergeNameServers(nameServers, systemServers, includeGlobal, includeRegional, location)
 	if limited, truncated := limitResolvers(servers, MAX_RESOLVERS); truncated > 0 {
 		servers = limited
 		if _, err := fmt.Fprintf(w, "warning=resolver_list_truncated count=%d limit=%d\n", truncated, MAX_RESOLVERS); err != nil {
@@ -347,7 +374,11 @@ func Submit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	job := startBenchmarkJob(cfg)
+	job, err := startBenchmarkJob(cfg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
 	writeJSON(w, http.StatusAccepted, job.snapshot())
 }
 
@@ -359,7 +390,44 @@ func Ping(w http.ResponseWriter, r *http.Request) {
 	if !validateRequestToken(w, r) {
 		return
 	}
+	if sessionID := strings.TrimSpace(r.URL.Query().Get("session_id")); sessionID != "" {
+		sessionPingCallback(sessionID)
+	}
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+func SessionOpen(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !validateRequestToken(w, r) {
+		return
+	}
+	sessionID := parseSessionID(r)
+	if sessionID == "" {
+		http.Error(w, "session_id is required", http.StatusBadRequest)
+		return
+	}
+	sessionOpenCallback(sessionID)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "opened"})
+}
+
+func SessionClose(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !validateRequestToken(w, r) {
+		return
+	}
+	sessionID := parseSessionID(r)
+	if sessionID == "" {
+		http.Error(w, "session_id is required", http.StatusBadRequest)
+		return
+	}
+	sessionCloseCallback(sessionID)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "closed"})
 }
 
 func Shutdown(w http.ResponseWriter, r *http.Request) {
@@ -923,12 +991,41 @@ func parseRequestConfig(r *http.Request) (requestConfig, error) {
 	return cfg, nil
 }
 
+func parseSessionID(r *http.Request) string {
+	if sessionID := strings.TrimSpace(r.URL.Query().Get("session_id")); sessionID != "" {
+		return sessionID
+	}
+	contentType := strings.ToLower(r.Header.Get("Content-Type"))
+	if strings.Contains(contentType, "application/json") {
+		var payload struct {
+			SessionID string `json:"session_id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&payload); err == nil {
+			return strings.TrimSpace(payload.SessionID)
+		}
+	}
+	if err := parseIncomingForm(r); err == nil {
+		if sessionID := strings.TrimSpace(r.FormValue("session_id")); sessionID != "" {
+			return sessionID
+		}
+	}
+	return ""
+}
+
 func normalizeDataSourceValue(raw string) string {
 	value := strings.ToLower(strings.TrimSpace(raw))
 	if value == "" {
 		return "chrome"
 	}
 	return value
+}
+
+func normalizeBasePath(raw string) string {
+	path := "/" + strings.Trim(raw, "/")
+	if path == "/" {
+		return "/"
+	}
+	return path + "/"
 }
 
 func resolveDataSource(raw string) (string, string) {

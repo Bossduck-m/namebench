@@ -1,10 +1,8 @@
 package ui
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -23,15 +21,6 @@ func discoverSystemResolvers() ([]string, string) {
 }
 
 func discoverWindowsResolvers() ([]string, string) {
-	command := `$ErrorActionPreference='Stop'; $servers = Get-DnsClientServerAddress -AddressFamily IPv4,IPv6 | Where-Object { $_.ServerAddresses } | ForEach-Object { $_.ServerAddresses } | Select-Object -Unique; $servers | ConvertTo-Json -Compress`
-	output, err := exec.Command(windowsSystemCommand("powershell.exe"), "-NoProfile", "-NonInteractive", "-Command", command).CombinedOutput()
-	if err == nil {
-		servers, parseErr := parseWindowsResolverJSON(output)
-		if parseErr == nil && len(servers) > 0 {
-			return servers, ""
-		}
-	}
-
 	servers := parseResolverText(runBestEffort(windowsSystemCommand("netsh.exe"), "interface", "ip", "show", "dnsservers"))
 	servers = append(servers, parseResolverText(runBestEffort(windowsSystemCommand("netsh.exe"), "interface", "ipv6", "show", "dnsservers"))...)
 	servers = normalizeResolverList(servers)
@@ -39,9 +28,6 @@ func discoverWindowsResolvers() ([]string, string) {
 		return servers, ""
 	}
 
-	if err != nil {
-		return nil, fmt.Sprintf("System DNS discovery failed: %v", err)
-	}
 	return nil, "System DNS discovery returned no public resolvers."
 }
 
@@ -55,25 +41,6 @@ func discoverResolvConf(path string) ([]string, string) {
 		return nil, "System DNS discovery returned no public resolvers."
 	}
 	return servers, ""
-}
-
-func parseWindowsResolverJSON(raw []byte) ([]string, error) {
-	trimmed := strings.TrimSpace(string(raw))
-	if trimmed == "" || trimmed == "null" {
-		return nil, nil
-	}
-
-	var list []string
-	if err := json.Unmarshal(raw, &list); err == nil {
-		return normalizeResolverList(list), nil
-	}
-
-	var single string
-	if err := json.Unmarshal(raw, &single); err == nil {
-		return normalizeResolverList([]string{single}), nil
-	}
-
-	return nil, fmt.Errorf("unable to parse resolver json")
 }
 
 func parseResolvConfNameservers(raw []byte) []string {
@@ -118,7 +85,7 @@ func normalizeResolverList(candidates []string) []string {
 }
 
 func runBestEffort(name string, args ...string) string {
-	output, err := exec.Command(name, args...).CombinedOutput()
+	output, err := combinedOutputHidden(name, args...)
 	if err != nil {
 		return ""
 	}

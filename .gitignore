@@ -1,8 +1,10 @@
 *.py[cod]
 namebench
 namebench.exe
+namebench.exe~
 .tools/
 namebench.log
+HANDOFF.md
 
 # C extensions
 *.so

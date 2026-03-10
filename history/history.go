@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,7 +30,9 @@ func unlockDatabase(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	log.Printf("%d bytes written to %s", written, t.Name())
+	if written == 0 {
+		return "", fmt.Errorf("history database copy was empty")
+	}
 	return t.Name(), nil
 }
 
@@ -72,7 +73,6 @@ func historyQuery(days int) string {
 }
 
 func queryHistoryURLs(path string, query string) (urls []string, err error) {
-	log.Printf("Checking %s", path)
 	_, err = os.Stat(path)
 	if os.IsNotExist(err) {
 		return nil, nil
@@ -95,7 +95,6 @@ func queryHistoryURLs(path string, query string) (urls []string, err error) {
 
 	rows, err := db.Query(query)
 	if err != nil {
-		log.Printf("Query failed: %s", err)
 		return nil, err
 	}
 	defer rows.Close()

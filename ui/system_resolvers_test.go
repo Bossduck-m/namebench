@@ -2,48 +2,6 @@ package ui
 
 import "testing"
 
-func TestParseWindowsResolverJSON(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name  string
-		raw   string
-		want  int
-		first string
-	}{
-		{
-			name:  "array payload",
-			raw:   `["192.168.1.1","1.1.1.1","2606:4700:4700::1111"]`,
-			want:  2,
-			first: "1.1.1.1:53",
-		},
-		{
-			name:  "single payload",
-			raw:   `"8.8.8.8"`,
-			want:  1,
-			first: "8.8.8.8:53",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got, err := parseWindowsResolverJSON([]byte(tt.raw))
-			if err != nil {
-				t.Fatalf("parseWindowsResolverJSON() error = %v", err)
-			}
-			if len(got) != tt.want {
-				t.Fatalf("parseWindowsResolverJSON() len = %d, want %d", len(got), tt.want)
-			}
-			if len(got) > 0 && got[0] != tt.first {
-				t.Fatalf("parseWindowsResolverJSON() first = %q, want %q", got[0], tt.first)
-			}
-		})
-	}
-}
-
 func TestParseResolvConfNameservers(t *testing.T) {
 	t.Parallel()
 

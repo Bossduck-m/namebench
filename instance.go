@@ -55,7 +55,7 @@ func (g *instanceGuard) WriteState(state instanceState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(g.statePath, payload, 0o644)
+	return os.WriteFile(g.statePath, payload, 0o600)
 }
 
 func (g *instanceGuard) Release() {

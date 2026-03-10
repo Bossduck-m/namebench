@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/namebench/history"
@@ -49,9 +50,13 @@ type benchmarkJob struct {
 }
 
 var benchmarkJobs sync.Map
+var activeBenchmarkJobs atomic.Int32
 
-func startBenchmarkJob(cfg requestConfig) *benchmarkJob {
+func startBenchmarkJob(cfg requestConfig) (*benchmarkJob, error) {
 	cleanupExpiredBenchmarkJobs(time.Now())
+	if !activeBenchmarkJobs.CompareAndSwap(0, 1) {
+		return nil, errors.New("another benchmark is already running")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	job := &benchmarkJob{
@@ -66,10 +71,11 @@ func startBenchmarkJob(cfg requestConfig) *benchmarkJob {
 	}
 	benchmarkJobs.Store(job.ID, job)
 	go job.run(ctx, cfg)
-	return job
+	return job, nil
 }
 
 func (j *benchmarkJob) run(ctx context.Context, cfg requestConfig) {
+	defer activeBenchmarkJobs.Store(0)
 	j.setStatus("running")
 
 	queryCount := cfg.QueryCount

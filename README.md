@@ -25,7 +25,7 @@ This fork adds:
 ## Build
 
 ```bash
-git clone https://github.com/<your-user>/namebench.git
+git clone https://github.com/Bossduck-m/namebench.git
 cd namebench
 go mod tidy
 go build ./...
@@ -43,15 +43,16 @@ Run in HTTP mode:
 .\\namebench.exe -port 8100
 ```
 
-By default it auto-opens your browser. If browser auto-open is blocked, open manually:
-
-- `http://127.0.0.1:8100/`
+By default it auto-opens your browser using a randomized local session URL.
+If browser auto-open is blocked, open the exact startup URL printed by the app or written to `namebench.log`.
 
 You can disable auto-open:
 
 ```bash
 ./namebench -port 8100 -open_browser=false
 ```
+
+When `-open_browser=false` is used, read the full local URL from the startup log output instead of assuming `/`.
 
 To enable verbose console logs:
 
@@ -114,6 +115,7 @@ ASN/country enrichment is disabled by default and uses third-party metadata serv
 - If Chrome history has no eligible external hostnames, benchmark falls back to a built-in public domain set.
 - Each benchmark runs twice per hostname to compare cold-cache and warm-cache resolver behavior.
 - If no valid history records are found, the API returns warnings and empty results.
+- The local UI runs behind a randomized per-launch path to reduce unwanted localhost probing.
 
 ## Release notes
 

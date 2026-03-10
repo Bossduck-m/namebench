@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/google/namebench/ui"
 )
 
@@ -28,7 +29,7 @@ var idleTimeoutFlag = flag.Duration("idle_timeout", 15*time.Minute, "How long th
 func openBrowser(url string) error {
 	switch runtime.GOOS {
 	case "windows":
-		return exec.Command(systemExecutablePath("rundll32.exe"), "url.dll,FileProtocolHandler", url).Start()
+		return startHiddenCommand(systemExecutablePath("rundll32.exe"), "url.dll,FileProtocolHandler", url)
 	case "darwin":
 		return exec.Command("/usr/bin/open", url).Start()
 	default:
@@ -64,7 +65,7 @@ func configureLogging() {
 			target = filepath.Join(filepath.Dir(exePath), target)
 		}
 	}
-	file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	file, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
 		log.SetOutput(io.Discard)
 		return
@@ -98,7 +99,8 @@ func main() {
 		log.Fatalf("Failed to listen on %s: %v", listenAddr, err)
 	}
 
-	url := fmt.Sprintf("http://%s/", listener.Addr().String())
+	basePath := "/" + strings.ToLower(uuid.NewString()) + "/"
+	url := fmt.Sprintf("http://%s%s", listener.Addr().String(), basePath)
 	if err := instanceGuard.WriteState(instanceState{
 		PID:       os.Getpid(),
 		URL:       url,
@@ -109,11 +111,25 @@ func main() {
 	log.Printf("namebench is listening at %s", url)
 
 	runtimeState := newAppRuntime(*idleTimeoutFlag)
-	handler := runtimeState.wrapHandler(ui.RegisterHandlers(ui.HandlerOptions{
+	uiHandler := ui.RegisterHandlers(ui.HandlerOptions{
+		BasePath: basePath,
 		OnShutdown: func() {
 			runtimeState.requestShutdown("requested by UI")
 		},
-	}))
+		OnSessionOpen: func(sessionID string) {
+			runtimeState.sessionOpened(sessionID)
+		},
+		OnSessionClose: func(sessionID string) {
+			runtimeState.sessionClosed(sessionID)
+		},
+		OnSessionPing: func(sessionID string) {
+			runtimeState.sessionPing(sessionID)
+		},
+	})
+	prefix := strings.TrimSuffix(basePath, "/")
+	baseMux := http.NewServeMux()
+	baseMux.Handle(basePath, http.StripPrefix(prefix, uiHandler))
+	handler := runtimeState.wrapHandler(baseMux)
 	server := &http.Server{Handler: handler}
 	runtimeState.attachServer(server)
 

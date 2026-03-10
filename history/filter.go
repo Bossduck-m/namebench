@@ -2,7 +2,6 @@
 package history
 
 import (
-	"log"
 	"math/rand"
 	"net/url"
 	"regexp"
@@ -41,7 +40,6 @@ func ExternalHostnames(entries []string) (hostnames []string) {
 	for _, uString := range entries {
 		u, err := url.ParseRequestURI(uString)
 		if err != nil {
-			log.Printf("Error parsing %s: %s", uString, err)
 			continue
 		}
 		if !isWebURL(u) {

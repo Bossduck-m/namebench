@@ -3,6 +3,7 @@ package ui
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -258,6 +259,69 @@ func TestShutdownHandlerInvokesCallback(t *testing.T) {
 	}
 }
 
+func TestDnsSecRejectsGet(t *testing.T) {
+	handler := RegisterHandlers(HandlerOptions{})
+
+	req := httptest.NewRequest(http.MethodGet, "/dnssec", nil)
+	req.Header.Set("X-Namebench-Token", appRequestToken)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusMethodNotAllowed {
+		t.Fatalf("expected status %d, got %d", http.StatusMethodNotAllowed, rec.Code)
+	}
+}
+
+func TestSessionHandlersInvokeCallbacks(t *testing.T) {
+	opened := make(chan string, 1)
+	closed := make(chan string, 1)
+	handler := RegisterHandlers(HandlerOptions{
+		OnSessionOpen: func(sessionID string) {
+			opened <- sessionID
+		},
+		OnSessionClose: func(sessionID string) {
+			closed <- sessionID
+		},
+	})
+
+	openReq := httptest.NewRequest(http.MethodPost, "/session/open", strings.NewReader(`{"session_id":"abc123"}`))
+	openReq.Header.Set("Content-Type", "application/json")
+	openReq.Header.Set("X-Namebench-Token", appRequestToken)
+	openRec := httptest.NewRecorder()
+	handler.ServeHTTP(openRec, openReq)
+	if openRec.Code != http.StatusOK {
+		t.Fatalf("expected open status %d, got %d", http.StatusOK, openRec.Code)
+	}
+
+	closeReq := httptest.NewRequest(http.MethodPost, "/session/close", strings.NewReader(`{"session_id":"abc123"}`))
+	closeReq.Header.Set("Content-Type", "application/json")
+	closeReq.Header.Set("X-Namebench-Token", appRequestToken)
+	closeRec := httptest.NewRecorder()
+	handler.ServeHTTP(closeRec, closeReq)
+	if closeRec.Code != http.StatusOK {
+		t.Fatalf("expected close status %d, got %d", http.StatusOK, closeRec.Code)
+	}
+
+	select {
+	case got := <-opened:
+		if got != "abc123" {
+			t.Fatalf("expected opened session abc123, got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("expected session open callback")
+	}
+
+	select {
+	case got := <-closed:
+		if got != "abc123" {
+			t.Fatalf("expected closed session abc123, got %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatalf("expected session close callback")
+	}
+}
+
 func TestHasRunningJobs(t *testing.T) {
 	runningJob := &benchmarkJob{ID: "running-job", status: "running"}
 	completedJob := &benchmarkJob{ID: "completed-job", status: "completed", finished: time.Now()}
@@ -275,5 +339,82 @@ func TestHasRunningJobs(t *testing.T) {
 	runningJob.finished = time.Now()
 	if HasRunningJobs() {
 		t.Fatalf("expected completed jobs to be ignored")
+	}
+}
+
+func TestNormalizeBasePath(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{input: "", want: "/"},
+		{input: "/", want: "/"},
+		{input: "secret", want: "/secret/"},
+		{input: "/secret", want: "/secret/"},
+		{input: "/secret/", want: "/secret/"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.input, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeBasePath(tt.input); got != tt.want {
+				t.Fatalf("normalizeBasePath(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestStartBenchmarkJobRejectsConcurrentRun(t *testing.T) {
+	activeBenchmarkJobs.Store(0)
+	t.Cleanup(func() {
+		activeBenchmarkJobs.Store(0)
+	})
+
+	activeBenchmarkJobs.Store(1)
+	if _, err := startBenchmarkJob(requestConfig{}); err == nil {
+		t.Fatalf("expected concurrent benchmark start to be rejected")
+	}
+}
+
+func TestIndexTemplateIncludesBasePath(t *testing.T) {
+	previous := appBasePath
+	appBasePath = "/secret/"
+	t.Cleanup(func() {
+		appBasePath = previous
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	Index(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	body := rec.Body.String()
+	if !strings.Contains(body, `content="/secret/"`) {
+		t.Fatalf("expected rendered template to include base path, body=%q", body)
+	}
+}
+
+func TestSubmitRejectsSecondActiveJob(t *testing.T) {
+	activeBenchmarkJobs.Store(1)
+	t.Cleanup(func() {
+		activeBenchmarkJobs.Store(0)
+	})
+
+	payload := `{"history_consent":true,"query_count":10}`
+	req := httptest.NewRequest(http.MethodPost, "/submit", strings.NewReader(payload))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Namebench-Token", appRequestToken)
+	rec := httptest.NewRecorder()
+
+	Submit(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Fatalf("expected status %d, got %d", http.StatusConflict, rec.Code)
 	}
 }

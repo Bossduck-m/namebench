@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net/url"
 	"regexp"
+	"strings"
 
 	"golang.org/x/net/publicsuffix"
 )
@@ -14,15 +15,22 @@ var (
 	internalRe = regexp.MustCompile(`\.corp|\.sandbox\.|\.borg\.|\.hot\.|internal|dmz|\._[ut][dc]p\.|intra|\.\w$|\.\w{5,}$`)
 )
 
+func isWebURL(u *url.URL) bool {
+	switch strings.ToLower(strings.TrimSpace(u.Scheme)) {
+	case "http", "https":
+		return true
+	default:
+		return false
+	}
+}
+
 func isPossiblyInternal(addr string) bool {
 	// note: this happens to reject IPs and anything with a port at the end.
 	_, icann := publicsuffix.PublicSuffix(addr)
 	if !icann {
-		log.Printf("%s does not have a public suffix", addr)
 		return true
 	}
 	if internalRe.MatchString(addr) {
-		log.Printf("%s may be internal.", addr)
 		return true
 	}
 	return false
@@ -36,8 +44,15 @@ func ExternalHostnames(entries []string) (hostnames []string) {
 			log.Printf("Error parsing %s: %s", uString, err)
 			continue
 		}
-		if !isPossiblyInternal(u.Host) {
-			hostnames = append(hostnames, u.Host)
+		if !isWebURL(u) {
+			continue
+		}
+		host := u.Hostname()
+		if host == "" {
+			continue
+		}
+		if !isPossiblyInternal(host) {
+			hostnames = append(hostnames, host)
 		}
 	}
 	return
@@ -45,12 +60,13 @@ func ExternalHostnames(entries []string) (hostnames []string) {
 
 // Filter input array for unique entries.
 func Uniq(input []string) (output []string) {
-	last := ""
+	seen := make(map[string]struct{}, len(input))
 	for _, i := range input {
-		if i != last {
-			output = append(output, i)
-			last = i
+		if _, exists := seen[i]; exists {
+			continue
 		}
+		seen[i] = struct{}{}
+		output = append(output, i)
 	}
 	return
 }

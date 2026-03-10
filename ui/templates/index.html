@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="namebench modern UI">
     <meta name="author" content="namebench">
+    <meta name="namebench-request-token" content="{{.RequestToken}}">
 
     <title>namebench</title>
     <link href="/static/index.css" rel="stylesheet">
@@ -24,29 +25,35 @@
             <h2>Benchmark Setup</h2>
 
             <label for="nameservers">Nameservers</label>
-            <textarea id="nameservers" name="nameservers" rows="5">1.1.1.1
+            <textarea id="nameservers" name="nameservers" rows="10">1.1.1.1
+1.0.0.1
 8.8.8.8
+8.8.4.4
 9.9.9.9
+149.112.112.112
 208.67.222.222
-94.140.14.14</textarea>
-            <p class="field-hint">Use public DNS IPs, one per line (port optional, default is 53). Private/local addresses are ignored.</p>
+208.67.220.220
+94.140.14.14
+94.140.15.15
+76.76.2.0</textarea>
+            <p class="field-hint">Use public DNS IPs, one per line (port optional, default is 53). Private/local addresses are ignored. System resolvers can also be discovered automatically.</p>
 
             <div class="toggles">
+              <label class="toggle-row" for="include-system">
+                <input id="include-system" type="checkbox" name="include_system" checked>
+                <span>Include DNS resolvers configured on this machine</span>
+              </label>
+              <label class="toggle-row" for="include-metadata">
+                <input id="include-metadata" type="checkbox" name="include_metadata">
+                <span>Resolve ASN / country labels using third-party metadata services</span>
+              </label>
               <label class="toggle-row" for="include-global">
                 <input id="include-global" type="checkbox" name="include_global" checked>
-                <span>Include global DNS providers (Google, OpenDNS, Cloudflare, Quad9)</span>
+                <span>Include global DNS providers (Google, OpenDNS, Cloudflare, Quad9, Verisign, DNS.WATCH)</span>
               </label>
               <label class="toggle-row" for="include-regional">
                 <input id="include-regional" type="checkbox" name="include_regional" checked>
                 <span>Include best available regional DNS services</span>
-              </label>
-              <label class="toggle-row" for="censorship-check">
-                <input id="censorship-check" type="checkbox" name="censorship_check">
-                <span>Run censorship and hijack checks</span>
-              </label>
-              <label class="toggle-row" for="share-results">
-                <input id="share-results" type="checkbox" name="share_results">
-                <span>Share anonymized benchmark results</span>
               </label>
             </div>
 
@@ -62,19 +69,11 @@
                 </select>
               </div>
               <div class="field">
-                <label for="health-profile">Health check profile</label>
-                <select id="health-profile" name="health_profile">
-                  <option value="fast" selected>Fast</option>
-                  <option value="balanced">Balanced</option>
-                  <option value="thorough">Thorough</option>
-                </select>
-              </div>
-              <div class="field">
                 <label for="data-source">Query data source</label>
                 <select id="data-source" name="data_source">
-                  <option value="chrome" selected>Google Chrome</option>
-                  <option value="firefox">Mozilla Firefox</option>
+                  <option value="chrome" selected>Chromium Browsers</option>
                 </select>
+                <p class="field-hint">Uses Chrome, Edge, and Brave browser history profiles when available.</p>
               </div>
               <div class="field">
                 <label for="query-count">Number of queries</label>
@@ -82,8 +81,15 @@
               </div>
             </div>
 
+            <label class="toggle-row consent-row" for="history-consent">
+              <input id="history-consent" type="checkbox" name="history_consent">
+              <span>I allow namebench to read sampled Chromium history and send those domain lookups to the selected DNS resolvers.</span>
+            </label>
+            <p class="field-hint">Benchmark uses recent Chromium browsing history when available. Without this consent, Start Benchmark stays blocked.</p>
+
             <div class="actions">
               <button id="start-button" class="btn btn-primary" type="submit">Start Benchmark</button>
+              <button id="cancel-button" class="btn btn-muted" type="button" disabled>Cancel Run</button>
               <button id="dnssec-button" class="btn btn-muted" type="button">Quick DNSSEC Check (Selected Servers)</button>
             </div>
           </form>
@@ -110,6 +116,17 @@
               </article>
             </div>
 
+            <div class="progress-panel">
+              <div class="progress-meta">
+                <span id="progress-text">Idle</span>
+                <span id="progress-percent">0%</span>
+              </div>
+              <div class="progress-track">
+                <span id="progress-fill" class="progress-fill"></span>
+              </div>
+              <p id="progress-detail" class="progress-detail">0 / 0 queries</p>
+            </div>
+
             <p class="field-caption">Result log</p>
             <pre id="result-log" class="result-log">namebench is ready.</pre>
           </aside>
@@ -118,7 +135,11 @@
         <section class="results-card">
           <div class="results-head">
             <h2>Benchmark Results</h2>
-            <p id="winner-banner" class="winner-banner">Run benchmark to populate rankings.</p>
+            <div class="results-actions">
+              <p id="winner-banner" class="winner-banner">Run benchmark to populate rankings.</p>
+              <button id="export-json-button" class="btn btn-muted" type="button" disabled>Export JSON</button>
+              <button id="export-csv-button" class="btn btn-muted" type="button" disabled>Export CSV</button>
+            </div>
           </div>
 
           <div class="table-wrap">
@@ -127,9 +148,12 @@
                 <tr>
                   <th>Rank</th>
                   <th>Server</th>
+                  <th>Network</th>
                   <th>Score</th>
-                  <th>Avg (ms)</th>
-                  <th>P95 (ms)</th>
+                  <th>Cold Avg (ms)</th>
+                  <th>Warm Avg (ms)</th>
+                  <th>Jitter (ms)</th>
+                  <th>Integrity</th>
                   <th>Fail %</th>
                   <th>Success</th>
                   <th>Fail</th>
@@ -137,7 +161,7 @@
               </thead>
               <tbody id="results-body">
                 <tr>
-                  <td colspan="8" class="empty-cell">No benchmark data yet.</td>
+                  <td colspan="11" class="empty-cell">No benchmark data yet.</td>
                 </tr>
               </tbody>
             </table>
@@ -145,20 +169,46 @@
 
           <div class="charts-grid">
             <article class="chart-card">
-              <h3>Average Latency by Server</h3>
-              <div id="latency-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
+              <h3>Cold Cache Latency by Server</h3>
+              <div id="cold-latency-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
+            </article>
+
+            <article class="chart-card">
+              <h3>Warm Cache Latency by Server</h3>
+              <div id="warm-latency-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
             </article>
 
             <article class="chart-card">
               <h3>Error Rate by Server</h3>
               <div id="error-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
             </article>
-
-            <article class="chart-card">
-              <h3>Winner Latency Distribution</h3>
-              <div id="distribution-bars" class="bar-chart empty-state">Run benchmark to render chart.</div>
-            </article>
           </div>
+
+          <section class="diagnostics-card">
+            <div class="results-head">
+              <h3>NXDOMAIN / Redirection Report</h3>
+              <p id="diagnostics-banner" class="winner-banner">Run benchmark to inspect resolver integrity.</p>
+            </div>
+            <div class="diagnostics-metrics">
+              <article class="metric">
+                <p class="metric-label">Clean</p>
+                <p id="diag-clean" class="metric-value">0</p>
+              </article>
+              <article class="metric">
+                <p class="metric-label">Suspicious</p>
+                <p id="diag-suspicious" class="metric-value">0</p>
+              </article>
+              <article class="metric">
+                <p class="metric-label">Hijacked</p>
+                <p id="diag-hijacked" class="metric-value">0</p>
+              </article>
+              <article class="metric">
+                <p class="metric-label">Unknown</p>
+                <p id="diag-unknown" class="metric-value">0</p>
+              </article>
+            </div>
+            <div id="diagnostics-list" class="diagnostics-list empty-state">Run benchmark to render diagnostics.</div>
+          </section>
         </section>
       </section>
     </main>

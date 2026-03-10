@@ -2,15 +2,18 @@
 setlocal
 cd /d "%~dp0"
 
+set GOEXE=go
+if exist ".tools\go\bin\go.exe" set GOEXE=.tools\go\bin\go.exe
+
 echo Building namebench Windows GUI executable...
-go mod tidy
+%GOEXE% mod tidy
 if errorlevel 1 (
   echo Build failed during dependency resolution.
   pause
   exit /b 1
 )
 
-go build -ldflags="-H=windowsgui" -o namebench.exe .
+%GOEXE% build -ldflags="-H=windowsgui" -o namebench.exe .
 if errorlevel 1 (
   echo Build failed.
   pause

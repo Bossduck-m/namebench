@@ -191,6 +191,12 @@ input[type="number"]:focus,
   accent-color: var(--primary-strong);
 }
 
+.consent-row {
+  margin-top: 0.9rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
 .field-grid {
   margin-top: 0.8rem;
   display: grid;
@@ -273,6 +279,42 @@ input[type="number"]:focus,
   gap: 0.55rem;
 }
 
+.progress-panel {
+  margin-top: 0.85rem;
+}
+
+.progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.progress-track {
+  margin-top: 0.4rem;
+  width: 100%;
+  height: 0.72rem;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.progress-fill {
+  display: block;
+  width: 0%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--accent));
+  transition: width 180ms ease;
+}
+
+.progress-detail {
+  margin: 0.45rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
 .metric {
   margin: 0;
   background: rgba(15, 23, 42, 0.72);
@@ -319,6 +361,14 @@ input[type="number"]:focus,
   margin-bottom: 0.7rem;
 }
 
+.results-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .winner-banner {
   margin: 0;
   border: 1px solid rgba(20, 184, 166, 0.4);
@@ -338,7 +388,7 @@ input[type="number"]:focus,
 #results-table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
+  min-width: 1120px;
 }
 
 #results-table th,
@@ -370,6 +420,19 @@ input[type="number"]:focus,
   background: rgba(13, 148, 136, 0.16);
 }
 
+.integrity-clean {
+  color: #86efac;
+}
+
+.integrity-suspicious,
+.integrity-unknown {
+  color: #fbbf24;
+}
+
+.integrity-hijacked {
+  color: #fb7185;
+}
+
 .empty-cell {
   color: var(--muted);
   text-align: center;
@@ -387,6 +450,71 @@ input[type="number"]:focus,
   border-radius: 10px;
   background: rgba(15, 23, 42, 0.58);
   padding: 0.7rem;
+}
+
+.diagnostics-card {
+  margin-top: 0.9rem;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  background: rgba(15, 23, 42, 0.58);
+  padding: 0.9rem;
+}
+
+.diagnostics-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.55rem;
+}
+
+.diagnostics-list {
+  margin-top: 0.8rem;
+  display: grid;
+  gap: 0.55rem;
+}
+
+.diagnostic-row {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  background: rgba(15, 23, 42, 0.72);
+}
+
+.diagnostic-row.is-hijacked {
+  border-color: rgba(251, 113, 133, 0.45);
+}
+
+.diagnostic-row.is-suspicious {
+  border-color: rgba(251, 191, 36, 0.4);
+}
+
+.diagnostic-row.is-unknown {
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.diagnostic-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.diagnostic-server {
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.diagnostic-status {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.diagnostic-meta,
+.diagnostic-detail {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.82rem;
 }
 
 .bar-chart {
@@ -457,6 +585,10 @@ input[type="number"]:focus,
   .charts-grid {
     grid-template-columns: 1fr;
   }
+
+  .diagnostics-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 740px) {
@@ -466,12 +598,18 @@ input[type="number"]:focus,
   }
 
   .field-grid,
-  .metrics {
+  .metrics,
+  .diagnostics-metrics {
     grid-template-columns: 1fr;
   }
 
   .actions {
     flex-direction: column;
+  }
+
+  .results-actions {
+    width: 100%;
+    justify-content: stretch;
   }
 
   .btn {

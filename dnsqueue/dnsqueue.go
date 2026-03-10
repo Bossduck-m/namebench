@@ -2,6 +2,7 @@
 package dnsqueue
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"log"
@@ -16,6 +17,7 @@ type Request struct {
 	RecordType      string
 	RecordName      string
 	VerifySignature bool
+	Context         context.Context
 
 	exit bool
 }
@@ -29,10 +31,11 @@ type Answer struct {
 
 // Result contains metadata relating to a set of DNS server results.
 type Result struct {
-	Request  Request
-	Duration time.Duration
-	Answers  []Answer
-	Error    string
+	Request      Request
+	Duration     time.Duration
+	Answers      []Answer
+	ResponseCode int
+	Error        string
 }
 
 // Queue contains methods and state for setting up a request queue.
@@ -58,16 +61,21 @@ func StartQueue(size, workers int) (q *Queue) {
 
 // Queue.Add adds a request to the queue. Only blocks if queue is full.
 func (q *Queue) Add(dest, record_type, record_name string) {
+	q.AddWithContext(context.Background(), dest, record_type, record_name)
+}
+
+// Queue.AddWithContext adds a request to the queue with a cancelable context.
+func (q *Queue) AddWithContext(ctx context.Context, dest, record_type, record_name string) {
 	q.Requests <- &Request{
 		Destination: dest,
 		RecordType:  record_type,
 		RecordName:  record_name,
+		Context:     ctx,
 	}
 }
 
 // Queue.SendDieSignal sends a signal to the workers that they can go home now.
 func (q *Queue) SendCompletionSignal() {
-	log.Printf("Sending completion signal...")
 	for i := 0; i < q.WorkerCount; i++ {
 		q.Requests <- &Request{exit: true}
 	}
@@ -77,14 +85,12 @@ func (q *Queue) SendCompletionSignal() {
 func startWorker(queue <-chan *Request, results chan<- *Result) {
 	for request := range queue {
 		if request.exit {
-			log.Printf("Completion received, worker is done.")
 			return
 		}
 		result, err := SendQuery(request)
 		if err != nil {
 			log.Printf("Error sending query: %s", err)
 		}
-		log.Printf("Sending back result: %+v", result)
 		results <- &result
 	}
 }
@@ -93,8 +99,11 @@ func startWorker(queue <-chan *Request, results chan<- *Result) {
 // stores response details in Result object, otherwise, returns Result object
 // with an error string.
 func SendQuery(request *Request) (result Result, err error) {
-	log.Printf("Sending query: %+v", request)
 	result.Request = *request
+	ctx := request.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
 
 	recordType, ok := dns.StringToType[request.RecordType]
 	if !ok {
@@ -104,15 +113,20 @@ func SendQuery(request *Request) (result Result, err error) {
 
 	m := new(dns.Msg)
 	if request.VerifySignature {
-		log.Printf("SetEdns0 for %s", request.RecordName)
 		m.SetEdns0(4096, true)
 	}
 	m.SetQuestion(request.RecordName, recordType)
-	c := new(dns.Client)
-	in, rtt, err := c.Exchange(m, request.Destination)
-	// log.Printf("Answer: %s [%d] %s", in, rtt, err)
+	udpClient := &dns.Client{Net: "udp", Timeout: 4 * time.Second}
+	in, rtt, err := udpClient.ExchangeContext(ctx, m, request.Destination)
+	if err == nil && in != nil && in.Truncated {
+		tcpClient := &dns.Client{Net: "tcp", Timeout: 4 * time.Second}
+		in, rtt, err = tcpClient.ExchangeContext(ctx, m, request.Destination)
+	}
 
 	result.Duration = rtt
+	if in != nil {
+		result.ResponseCode = in.Rcode
+	}
 	if err != nil {
 		result.Error = err.Error()
 	} else {

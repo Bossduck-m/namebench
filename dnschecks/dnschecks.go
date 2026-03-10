@@ -1,9 +1,10 @@
 package dnschecks
 
 import (
-	"github.com/google/namebench/dnsqueue"
 	"log"
-	"strings"
+
+	"github.com/google/namebench/dnsqueue"
+	"github.com/miekg/dns"
 )
 
 func DnsSec(ip string) (ok bool, err error) {
@@ -14,13 +15,16 @@ func DnsSec(ip string) (ok bool, err error) {
 		VerifySignature: true,
 	}
 	result, err := dnsqueue.SendQuery(r)
-	for _, answer := range result.Answers {
-		// TODO(tstromberg): Implement properly.
-		if strings.Contains(answer.String, "RRSIG") {
-			log.Printf("DnsSec for %s: true", ip)
-			return true, err
-		}
+	ok = resolverValidatesDNSSEC(result, err)
+	log.Printf("DnsSec for %s: %t (rcode=%s err=%v)", ip, ok, dns.RcodeToString[result.ResponseCode], err)
+	return ok, err
+}
+
+// resolverValidatesDNSSEC treats SERVFAIL for dnssec-failed.org as evidence
+// that the recursive resolver is validating DNSSEC and rejecting bogus data.
+func resolverValidatesDNSSEC(result dnsqueue.Result, err error) bool {
+	if err != nil {
+		return false
 	}
-	log.Printf("DnsSec for %s: false", ip)
-	return false, err
+	return result.ResponseCode == dns.RcodeServerFailure
 }
